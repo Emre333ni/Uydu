@@ -155,8 +155,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
     <div id="map"></div>
     <div id="cross"></div>
     <div id="hud">--</div>
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="sharpF" color-interpolation-filters="sRGB"><feConvolveMatrix order="3" kernelMatrix="0 -0.6 0 -0.6 3.4 -0.6 0 -0.6 0" preserveAlpha="true"/></filter></svg>
-    <div id="map3d" hidden></div>
+        <div id="map3d" hidden></div>
     <div id="divider"><div class="line"></div><div id="handle">⇆</div></div>
     <div id="fc">
       <button id="b3d" aria-label="2B / 3B">3B</button>
@@ -217,9 +216,10 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <label class="chk"><input type="checkbox" id="cLab"> Etiket</label>
       </div>
 
-      <label class="chk"><input type="checkbox" id="cSharp" checked> Yaklaşınca görüntüyü keskinleştir</label>
+      <label class="chk"><input type="checkbox" id="cSharp" checked> Yaklaşınca kontrastı artır (net görünsün)</label>
       <div class="btns"><button id="bOff">Bu bölgeyi çevrimdışı kaydet</button><button id="bOffClr">Kayıtlıyı sil</button></div>
       <div class="hint" id="offInfo" style="margin-top:0"></div>
+      <button id="bBest" style="width:100%;margin:8px 0">Bu konumda en net görüntüyü bul</button>
       <label>Yakınlaşınca görüntü boşalıyor ya da bulanıksa: en yüksek detay seviyesi
         <select id="selDetail">
           <option value="auto" selected>Otomatik</option>
@@ -715,6 +715,7 @@ const info={A:null,B:null};
 let wbItems=[];
 let m3=null,is3d=false,m3Ready=false,m3Marks=[];
 let overlay=null,last=null;
+let probeTimer=null;const probeKey={A:'',B:''};
 
 function nativeLimit(base){const d=$('selDetail').value;return d==='auto'?base:Math.min(base,+d)}
 
@@ -754,7 +755,7 @@ function setLayer(side){
   l.addTo(map);
   layer[side]=l;
   info[side]={kind,url,nz,subs,img};
-  applyMode();capZoom();
+  applyMode();capZoom();probeKey[side]='';scheduleProbe();
 }
 
 function updateClip(){
@@ -1142,6 +1143,7 @@ function capZoom(){
   applyFocus();
 }
 map.on('zoomend',applyFocus);
+map.on('moveend',()=>scheduleProbe());
 $('cSharp').onchange=applyFocus;
 
 async function loadImg(url){
@@ -1516,7 +1518,7 @@ function applyFocus(){
   const f=overlay?+$('aFocus').value/100:0;
   const fo=f>0?'brightness('+(1-0.55*f).toFixed(2)+') saturate('+(1-0.5*f).toFixed(2)+')':'';
   const over=['A','B'].some(k=>layer[k]&&map.getZoom()>layer[k].options.maxNativeZoom+0.01);
-  const flt=((over&&$('cSharp').checked)?'url(#sharpF) ':'')+fo;
+  const flt=((over&&$('cSharp').checked)?'contrast(1.14) saturate(1.06) ':'')+fo;
   map.getPane('paneA').style.filter=flt.trim();
   map.getPane('paneB').style.filter=flt.trim();
   pO.style.filter=overlay?'drop-shadow(0 0 2px rgba(255,190,60,.95))':'';
@@ -1825,6 +1827,104 @@ $('sel3d').onchange=()=>{
     focus3d();
   }catch(e){setMsg('3B katman değiştirilemedi: '+e.message)}
 };
+
+/* ---------- Gerçek görüntü var mı? ("Map data not yet available" döşemelerini tanır) ---------- */
+function tileOf(lat,lng,z){
+  const n=Math.pow(2,z),sn=Math.sin(lat*Math.PI/180);
+  return {x:Math.floor((lng+180)/360*n),y:Math.floor((0.5-Math.log((1+sn)/(1-sn))/(4*Math.PI))*n)};
+}
+function imgSig(im){
+  const cv=document.createElement('canvas');cv.width=cv.height=256;
+  const g=cv.getContext('2d',{willReadFrequently:true});
+  g.drawImage(im,0,0,256,256);
+  const d=g.getImageData(0,0,256,256).data;
+  const sig=CORE.signature(d,256,256);
+  let r=0,gg=0,b=0,n=0;
+  for(let i=0;i<d.length;i+=64){r+=d[i];gg+=d[i+1];b+=d[i+2];n++}
+  r/=n;gg/=n;b/=n;
+  const sorted=Array.from(sig).sort((a,b)=>a-b),med=sorted[sorted.length>>1];
+  const dev=sorted.map(v=>Math.abs(v-med)).sort((a,b)=>a-b);
+  return {sig,mad:dev[dev.length>>1],spread:Math.max(r,gg,b)-Math.min(r,gg,b)};
+}
+async function tileReal(tpl,subs,z,c){
+  const t=tileOf(c.lat,c.lng,z),max=Math.pow(2,z);
+  const im=await loadImg(tplUrl(tpl,z,t.x,t.y,subs));
+  if(!im)return null;                                  // alınamadı: bilinmiyor
+  let a;try{a=imgSig(im)}catch(e){return true}
+  if(a.mad<0.006&&a.spread<5)return false;           // düz nötr gri: boş döşeme
+  const far=await loadImg(tplUrl(tpl,z,(t.x+7)%max,t.y,subs));
+  if(far){try{if(CORE.sigDiff(a.sig,imgSig(far).sig)<0.0005)return false}catch(e){}}  // başka yerdeki döşemeyle aynı: boş döşeme
+  return true;
+}
+async function probeNative(tpl,subs,c,maxZ){
+  let lo=11,hi=maxZ;                                   // lo: kesin var sayılır
+  while(lo<hi){
+    const mid=Math.ceil((lo+hi)/2);
+    const r=await tileReal(tpl,subs,mid,c);
+    if(r===null)throw new Error('ağ');
+    if(r)lo=mid;else hi=mid-1;
+  }
+  return lo;
+}
+function scheduleProbe(){
+  clearTimeout(probeTimer);
+  probeTimer=setTimeout(runProbe,900);
+}
+async function runProbe(){
+  if(is3d||map.getZoom()<13)return;
+  const c=map.getCenter();
+  for(const side of ['A','B']){
+    const inf=info[side],l=layer[side];
+    if(!inf||!l||!inf.img||inf.kind==='s2')continue;
+    const t=tileOf(c.lat,c.lng,13);
+    const key=inf.kind+':'+(inf.url)+':'+t.x+','+t.y;
+    if(probeKey[side]===key)continue;
+    probeKey[side]=key;
+    let z;
+    if(!navigator.onLine){probeKey[side]='';continue}
+    try{z=await probeNative(inf.url,inf.subs,c,Math.min(19,inf.nz))}catch(e){probeKey[side]='';continue}
+    if(probeKey[side]!==key||layer[side]!==l)continue;
+    const lim=Math.min(nativeLimit(inf.nz),z);
+    if(l.options.maxNativeZoom!==lim){
+      l.options.maxNativeZoom=lim;l.redraw();capZoom();
+    }
+    if(z<Math.min(19,inf.nz)&&side==='A'){
+      setMsg('Bu bölgede '+SIDE_NAME[side]+' katmanında en fazla '+z+'. seviye gerçek görüntü var. Daha fazla yakınlaşma boş gri döşeme gösterirdi, sınırladım. “Katmanlar → En net görüntüyü bul” eski tarihlere bakar.');
+    }
+  }
+}
+async function findBest(){
+  const c=map.getCenter(),btn=$('bBest');
+  if(!wbItems.length){setMsg('Tarihsel görüntü listesi yüklenmedi.');return}
+  btn.disabled=true;
+  try{
+    setMsg('Bu konumdaki görüntü seviyeleri ölçülüyor…');
+    const zE=await probeNative(LAYERS.esri.url,'abc',c,19);
+    const zC=await probeNative(LAYERS.clarity.url,'abc',c,19);
+    let bestZ=Math.max(zE,zC),pick=null;
+    const items=wbItems.slice(0,120);
+    for(let z=19;z>bestZ&&!pick;z--){
+      setMsg('Tarihsel görüntüler taranıyor, seviye '+z+'…');
+      const good=[];let i=0;
+      const worker=async()=>{while(i<items.length){const it=items[i++];if((await tileReal(it.url,'abc',z,c))===true)good.push(it)}};
+      await Promise.all(Array.from({length:8},worker));
+      if(good.length){good.sort((a,b)=>a.date<b.date?1:-1);pick={it:good[0],z,n:good.length}}
+    }
+    if(pick){
+      const idx=wbItems.indexOf(pick.it);
+      $('selA').value='wb';$('dateA').selectedIndex=idx;setLayer('A');
+      setMsg('En net görüntü: Wayback '+pick.it.date+' (seviye '+pick.z+'; bu seviyede '+pick.n+' tarih var). A katmanına koyuldu. Güncel Esri en fazla '+zE+'. seviye.');
+    }else if(zC>zE){
+      $('selA').value='clarity';setLayer('A');
+      setMsg('En net görüntü: Esri Clarity (seviye '+zC+'). A katmanına koyuldu.');
+    }else{
+      $('selA').value='esri';setLayer('A');
+      setMsg('Bu konumda en net görüntü güncel Esri uydusu (seviye '+zE+'). Daha ayrıntılısı yok'+(zE<17?'; ince izler için çözünürlük yetersiz, yalnızca “Arazi şekli” analizi anlamlı olur.':'.'));
+    }
+  }catch(e){setMsg('Arama başarısız: '+e.message)}
+  finally{btn.disabled=false}
+}
+$('bBest').onclick=findBest;
 
 /* ---------- Zaman serisi ---------- */
 async function showSeries(k){

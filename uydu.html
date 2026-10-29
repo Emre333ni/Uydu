@@ -488,12 +488,44 @@ const CORE=(()=>{
         }
       }
     }
+    // Keskin kenar (ev, çatı, bina, tarla köşesi) höyük değildir: höyük profili yumuşak geçişlidir
+    const lbc={};
+    function soft(x,y,r){
+      const kk=Math.max(2,Math.round(r/12)),lumB=lbc[kk]||(lbc[kk]=boxBlur(lum,w,h,kk));
+      // yumuşaklık: disk içindeki en dik eğim, ortalama kontrastın kaç katı? (höyük ~1-3, bina kenarı >>5)
+      let inS=0,inN=0,ringS=0,ringN=0,gmax=0;
+      const R2=Math.round(1.6*r);
+      for(let dy=-R2;dy<=R2;dy++)for(let dx=-R2;dx<=R2;dx++){
+        const xx=x+dx,yy=y+dy;if(xx<kk||yy<kk||xx>=w-kk||yy>=h-kk)continue;
+        const rr=Math.hypot(dx,dy);if(rr>R2)continue;
+        const v=lumB[yy*w+xx];
+        if(rr<=0.5*r){inS+=v;inN++}else if(rr>=1.3*r){ringS+=v;ringN++}
+        const gx=(lumB[yy*w+xx+kk]-lumB[yy*w+xx-kk])/(2*kk),gy=(lumB[(yy+kk)*w+xx]-lumB[(yy-kk)*w+xx])/(2*kk);
+        const g=Math.hypot(gx,gy);if(g>gmax)gmax=g;
+      }
+      const con=Math.abs(inS/Math.max(1,inN)-ringS/Math.max(1,ringN));
+      return con>1e-4?gmax*r/con:99;
+    }
+    const smc={};let tries=0;
     const idx=[];for(let i=0;i<n;i++)if(best[i]>0)idx.push(i);
     idx.sort((a,b)=>best[b]-best[a]);
     for(const i of idx){
       const x=i%w,y=(i/w)|0,r=bestR[i];let ok=true;
+      if((out.rej||[]).some(c=>Math.hypot(c.x-x,c.y-y)<Math.max(c.r,r)*1.2))continue;
       for(const c of out){if(Math.hypot(c.x-x,c.y-y)<Math.max(c.r,r)*1.2||(best[i]<0.35*c.S&&Math.hypot(c.x-x,c.y-y)<4*Math.max(c.r,r))){ok=false;break}}
-      if(ok)out.push({x,y,r,S:best[i],Dm:2*r*mpp});
+      if(!ok)continue;
+      if(++tries>40)break;
+      const sf=soft(x,y,r);if(global.DBG)console.log('cand',x,y,r,best[i].toFixed(1),sf.toFixed(2));
+      if(sf>4.5){out.rej=(out.rej||[]);out.rej.push({x,y,r});continue}
+      // Yapay nesne ayıklama: kiremit/çatı rengi ve keskin kenar (gerçek höyükte yumuşak geçiş olur)
+      let roof=0,np=0;const rr=Math.round(r*0.9);
+      for(let yy=Math.max(0,y-rr);yy<=Math.min(h-1,y+rr);yy+=2)for(let xx=Math.max(0,x-rr);xx<=Math.min(w-1,x+rr);xx+=2){
+        if((xx-x)*(xx-x)+(yy-y)*(yy-y)>rr*rr)continue;
+        const j=(yy*w+xx)*4,R=rgba[j],G=rgba[j+1],B=rgba[j+2];np++;
+        if(R>G+20&&R>B+45)roof++;
+      }
+      if(np&&roof/np>0.10){if(global.DBG)console.log("roof",x,y,r,roof/np);continue}
+      out.push({x,y,r,S:best[i],Dm:2*r*mpp});
       if(out.length>=4)break;
     }
     return out;
@@ -1709,6 +1741,9 @@ function buildEntries(res,mpp,thr,isDem,enrich){
   if(!isDem&&res.mounds){
     for(const m of res.mounds){
       if(m.S<Math.max(5,thr*1.5))continue;
+      if(last&&last.mask){let mk=0,nn=0;const rr=Math.round(m.r*0.8);
+        for(let yy=m.y-rr;yy<=m.y+rr;yy+=2)for(let xx=m.x-rr;xx<=m.x+rr;xx+=2){if(xx<0||yy<0||xx>=res.w||yy>=res.h)continue;nn++;if(last.mask[yy*res.w+xx])mk++}
+        if(nn&&mk/nn>0.15)continue}
       const i=m.y*res.w+m.x;
       const c={x:m.x,y:m.y,S:Math.min(12,m.S),zE:res.zE?res.zE[i]:0,zL:res.zL?res.zL[i]:0,coh:0,theta:0,dem:false,crater:0,mound:true};
       entries.push({c,st:{L:m.Dm,W:m.Dm,area:Math.PI*m.Dm*m.Dm/4,rect:0,bear:0,capped:false},mound:true});

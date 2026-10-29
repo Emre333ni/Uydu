@@ -85,9 +85,13 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 #panel.collapsed .sec{display:none}
 #tabs [data-tab]{min-width:0}
 #pToggle{flex:none;width:46px;border:0;border-radius:0;background:transparent;color:var(--ember);font-size:18px;padding:0}
-#fc{position:absolute;top:8px;right:8px;z-index:720;display:grid;grid-template-columns:repeat(2,44px);grid-auto-rows:44px;gap:6px;max-height:calc(100% - 16px);touch-action:manipulation}
-#fc button{width:44px;height:44px;padding:0;border-radius:12px;background:rgba(16,23,30,.92);font-size:17px;font-weight:700;border-color:rgba(108,195,234,.45)}
+#fc{position:absolute;top:8px;right:8px;z-index:720;display:grid;grid-template-columns:repeat(3,42px);grid-auto-rows:42px;gap:5px;max-height:calc(100% - 16px);touch-action:manipulation}
+#fc button{width:42px;height:42px;padding:0;border-radius:12px;background:rgba(16,23,30,.92);font-size:17px;font-weight:700;border-color:rgba(108,195,234,.45)}
 #fc button[hidden]{display:none}
+#fc.shut{grid-template-columns:36px}
+#fc.shut button:not(#fcT){display:none}
+#fc.shut #fcT{width:36px;height:36px;font-size:15px;opacity:.8}
+#fc.open #fcT{grid-column:1/-1;width:100%;height:30px;font-size:13px}
 #map3d{position:absolute;inset:0;z-index:5;background:#05090e}
 #stage.m3 #cross{display:none}
 #cc{position:absolute;left:8px;right:8px;bottom:8px;z-index:720;display:flex;align-items:center;gap:6px;background:rgba(16,23,30,.93);border:1px solid var(--ember);border-radius:12px;padding:5px}
@@ -165,7 +169,8 @@ body.full #brand,body.full #top,body.full #panel{display:none}
     <div id="hud">--</div>
         <div id="map3d" hidden></div>
     <div id="divider"><div class="line"></div><div id="handle">⇆</div></div>
-    <div id="fc">
+    <div id="fc" class="shut">
+      <button id="fcT" aria-label="Araçlar">☰</button>
       <button id="b3d" aria-label="2B / 3B">3B</button>
       <button id="bRot" aria-label="Döndürülebilir harita">↻</button>
       <button id="bWalk" aria-label="Yürüyerek doğrula">🚶</button>
@@ -1593,10 +1598,10 @@ async function runMulti(){
       await sleep(20);
       const g=await grabTiles(chosen[k].url,'abc',z,x0,y0,cw,ch);
       if(g.error)continue;
-      const r=CORE.analyze(g.data.data,cw,ch,mpp,P);
+      const r=CORE.analyze(g.data.data,cw,ch,mpp,Object.assign({},P,{mounds:true}));
       if(r.flat)continue;
       R=r.R;
-      dates.push({date:chosen[k].date,raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:chosen[k].dryv,snow:CORE.snowFrac(g.data.data,cw,ch)>0.35});
+      dates.push({date:chosen[k].date,mounds:r.mounds,raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:chosen[k].dryv,snow:CORE.snowFrac(g.data.data,cw,ch)>0.35});
     }
     if(dates.length<2){setMsg('Yeterli sayıda tarihin görüntüsü alınamadı.');return}
     last={mode:'multi',dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:(o.note?o.note+'\n':'')+($('aSeason').value==='snow'?(climate.ok?'Kar dönemi seçimi: '+d_snowN+' kar tarihi bulundu, '+dates.filter(d=>d.snow).length+'/'+dates.length+' görüntüde kar var':'Kar verisi alınamadı'):'')+($('aSeason').value==='dry'?(climate.ok?'Kurak dönem seçimi: '+dates.filter(d=>d.dry!=null&&d.dry<=0.4).length+'/'+dates.length+' tarih kurak':'Yağış verisi alınamadı, yaz tarihleri kullanıldı'):''),desc:new Map()};
@@ -1793,9 +1798,10 @@ function buildEntries(res,mpp,thr,isDem,enrich){
       let mn=0;const rr=Math.max(2,Math.round(m.r*0.6));
       for(let yy=m.y-rr;yy<=m.y+rr;yy++)for(let xx=m.x-rr;xx<=m.x+rr;xx++){
         if(xx<0||yy<0||xx>=res.w||yy>=res.h||(xx-m.x)*(xx-m.x)+(yy-m.y)*(yy-m.y)>rr*rr)continue;
-        const v=res.zL[yy*res.w+xx];if(v<mn)mn=v;
+        const v=res.zL?res.zL[yy*res.w+xx]:0;if(v<mn)mn=v;
       }
       c.pit=mn<-5;
+      if(last&&last.mode==='multi'&&enrich)enrich([c]);
       entries.push({c,st:{L:m.Dm,W:m.Dm,area:Math.PI*m.Dm*m.Dm/4,rect:0,bear:0,capped:false},mound:true});
     }
   }
@@ -1831,6 +1837,16 @@ function showResult(){
   if(last.mode==='multi'){
     const agg=CORE.aggregate(last.dates.map(d=>d.S),cw,ch,thr);
     res={w:cw,h:ch,R:last.R,S:agg.Smax,P:agg.P};
+    // Höyük adayları: birden çok tarihte aynı yerde çıkanlar
+    {const all=[];last.dates.forEach((d,di)=>(d.mounds||[]).forEach(m=>all.push(Object.assign({di},m))));
+     all.sort((a,b)=>b.S-a.S);const out=[],need=Math.max(2,Math.ceil(last.dates.length/2));
+     for(const m of all){
+       if(out.some(o=>Math.hypot(o.x-m.x,o.y-m.y)<Math.max(o.r,m.r)))continue;
+       const grp=all.filter(q=>Math.hypot(q.x-m.x,q.y-m.y)<1.2*Math.max(q.r,m.r));
+       const ds=new Set(grp.map(q=>q.di));
+       if(ds.size>=need){out.push({x:m.x,y:m.y,r:m.r,Dm:m.Dm,S:grp.reduce((a,q)=>a+q.S,0)/grp.length,n:ds.size})}
+     }
+     res.mounds=out.slice(0,4)}
     if(mode!=='persist')mode='combined';
   }else{
     if(!last.res)return;
@@ -2203,6 +2219,11 @@ async function findBest(){
   finally{btn.disabled=false}
 }
 $('bBest').onclick=findBest;
+(function(){const fc=$('fc');
+  const set=o=>{fc.classList.toggle('open',o);fc.classList.toggle('shut',!o);$('fcT').textContent=o?'✕':'☰'};
+  $('fcT').onclick=()=>set(fc.classList.contains('shut'));
+  ['b3d','bWalk','bMsr'].forEach(id=>$(id).addEventListener('click',()=>setTimeout(()=>set(false),50)));
+})();
 
 /* ---------- Yağış / kuraklık ---------- */
 const climate={ok:false,key:'',idx:null,pre:null};

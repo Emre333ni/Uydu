@@ -2137,7 +2137,7 @@ async function probeNative(tpl,subs,c,maxZ,lenient){
   let lo=11,hi=maxZ;                                   // lo: kesin var sayılır
   while(lo<hi){
     const mid=Math.ceil((lo+hi)/2);
-    const r=await tileReal(tpl,subs,mid,c);
+    let r=await tileReal(tpl,subs,mid,c);
     if(r===null&&lenient&&navigator.onLine!==false){if(await tileReal(tpl,subs,mid,c)===null)r=false;else continue}
     if(r===null)throw new Error('ağ');
     if(r)lo=mid;else hi=mid-1;

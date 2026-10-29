@@ -274,7 +274,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
           </select>
         </label>
         <label><span>Arka plan ölçeği: <b class="val" id="vBg">25 m</b></span>
-          <input id="aBg" type="range" min="8" max="80" step="1" value="25">
+          <input id="aBg" type="range" min="8" max="150" step="1" value="25">
         </label>
         <label><span>Eşik: <b class="val" id="vThr">3.0</b> (düşük = çok iz)</span>
           <input id="aThr" type="range" min="1.5" max="8" step="0.1" value="3">
@@ -451,8 +451,52 @@ const CORE=(()=>{
     }
     const As=boxBlur(A,w,h,1);
     const S=new Float32Array(n);
-    for(let i=0;i<n;i++)S[i]=As[i]*(0.35+0.65*coh[i]);
-    return {flat:false,snow,w,h,R,zE,zL,coh,nrg,theta,As,S};
+    for(let i=0;i<n;i++)S[i]=As[i]*(0.5+0.5*coh[i]);
+    const mounds=P.mounds?findMounds(rgba,w,h,mpp,10,Math.max(60,P.bgMeters*2)):null;
+    return {flat:false,snow,w,h,R,zE,zL,coh,nrg,theta,As,S,mounds};
+  }
+
+  /* Höyük / kubbe dedektörü (görüntü): yuvarlak, çevresinden parlaklık veya bitki renginde ayrışan geniş leke.
+     Çok ölçekli: iç kutu - dış halka, 4 çeyrekte aynı işaret (simetri) şartı. */
+  function findMounds(rgba,w,h,mpp,minM,maxM){
+    const n=w*h,lum=new Float32Array(n),exg=new Float32Array(n);
+    for(let i=0,j=0;i<n;i++,j+=4){const r=rgba[j],g=rgba[j+1],b=rgba[j+2];lum[i]=(0.299*r+0.587*g+0.114*b)/255;exg[i]=(2*g-r-b)/(r+g+b+3)}
+    const chans=[lum,exg],out=[];
+    const rs=[];for(let m=minM;m<=maxM;m*=1.5){const r=Math.round(m/mpp);if(r>=3&&r*2.3<Math.min(w,h)/2&&(!rs.length||r>rs[rs.length-1]))rs.push(r)}
+    const best=new Float32Array(n),bestR=new Float32Array(n);
+    for(const r of rs){
+      const r2=2*r,qo=Math.max(1,r>>1),qr=Math.max(1,r>>1);
+      const N1=(2*r+1)*(2*r+1),N2=(2*r2+1)*(2*r2+1);
+      for(const ch of chans){
+        const a=boxBlur(ch,w,h,r),b=boxBlur(ch,w,h,r2),q=boxBlur(ch,w,h,qr);
+        const d=new Float32Array(n);
+        for(let i=0;i<n;i++){const ring=(b[i]*N2-a[i]*N1)/(N2-N1);d[i]=a[i]-ring}
+        const sg=Math.max(robustSigma(d),1e-4);
+        const m=r2+1;
+        for(let y=m;y<h-m;y++)for(let x=m;x<w-m;x++){
+          const i=y*w+x,z=d[i]/sg;
+          if(Math.abs(z)<3)continue;
+          // simetri: dört çeyrek merkezi, halkadan aynı yönde ayrışmalı
+          const ring=(b[i]*N2-a[i]*N1)/(N2-N1);let ok=0;
+          const sgn=z>0?1:-1;
+          for(const [dx,dy] of [[-qo,-qo],[qo,-qo],[-qo,qo],[qo,qo]]){
+            if((q[(y+dy)*w+x+dx]-ring)*sgn>0.5*Math.abs(d[i]))ok++;
+          }
+          if(ok<4)continue;
+          const sc=Math.abs(z)*(r<=4?0.8:1);
+          if(sc>best[i]){best[i]=sc;bestR[i]=r}
+        }
+      }
+    }
+    const idx=[];for(let i=0;i<n;i++)if(best[i]>0)idx.push(i);
+    idx.sort((a,b)=>best[b]-best[a]);
+    for(const i of idx){
+      const x=i%w,y=(i/w)|0,r=bestR[i];let ok=true;
+      for(const c of out){if(Math.hypot(c.x-x,c.y-y)<Math.max(c.r,r)*1.2||(best[i]<0.35*c.S&&Math.hypot(c.x-x,c.y-y)<4*Math.max(c.r,r))){ok=false;break}}
+      if(ok)out.push({x,y,r,S:best[i],Dm:2*r*mpp});
+      if(out.length>=4)break;
+    }
+    return out;
   }
 
   function applyMask(S,mask){
@@ -659,7 +703,7 @@ const CORE=(()=>{
     return n?c/n:0;
   }
 
-  return {boxBlur,snowFrac,blobStats,findChains,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
+  return {boxBlur,snowFrac,blobStats,findChains,findMounds,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
 })();
 /*CORE-END*/
 </script>
@@ -1414,7 +1458,7 @@ $('bPreset').onclick=()=>{
 function compute(){
   if(!last||last.mode!=='single')return;
   if(last.dem)return recomputeDem();
-  const P={bgMeters:+$('aBg').value};
+  const P={bgMeters:+$('aBg').value,mounds:true};
   const rs=last.sides.map(s=>CORE.analyze(last.raw[s].data,last.cw,last.ch,last.mpp,P));
   if(rs.some(r=>r.flat)){
     setMsg('Görüntü bu bölgede düz ya da boş görünüyor (veri yok olabilir). Detay seviyesini düşürmeyi deneyin.');
@@ -1538,7 +1582,8 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   const L=st.L,W=Math.max(st.W,0.01),el=L/W;
   let name;
   const vegDom=Math.abs(c.zE)>=Math.abs(c.zL);
-  if(chain)name='Çöküntü Hattı';
+  if(c.mound)name=(L>=12&&L<=250)?'Höyük / Tümülüs?':'Geniş Leke';
+  else if(chain)name='Çöküntü Hattı';
   else if(c.dem){
     if(c.zL>0&&c.crater)name='Çöken Tümülüs';
     else if(c.zL>0)name=(el<1.6&&L>=20&&L<=200)?'Tümülüs':'Yükselti';
@@ -1661,8 +1706,36 @@ function buildEntries(res,mpp,thr,isDem,enrich){
     entries.push({c:base,st:{L:ch.len,W:1,area:0,rect:0,bear:ch.bearing,capped:false},chain:ch,mem});
   });
   pool.forEach((c,i)=>{if(!inChain.has(i))entries.push({c,st:c.st})});
+  if(!isDem&&res.mounds){
+    for(const m of res.mounds){
+      if(m.S<Math.max(5,thr*1.5))continue;
+      const i=m.y*res.w+m.x;
+      const c={x:m.x,y:m.y,S:Math.min(12,m.S),zE:res.zE?res.zE[i]:0,zL:res.zL?res.zL[i]:0,coh:0,theta:0,dem:false,crater:0,mound:true};
+      entries.push({c,st:{L:m.Dm,W:m.Dm,area:Math.PI*m.Dm*m.Dm/4,rect:0,bear:0,capped:false},mound:true});
+    }
+  }
   entries.sort((a,b)=>b.c.S-a.c.S);
-  return entries.slice(0,10);
+  entries=entries.slice(0,10);
+  // Merkez (artı işareti) her zaman incelenir: eşiğin altında kalsa bile en güçlü izi bildirilir
+  const cx=res.w>>1,cy=res.h>>1,rad=Math.max(6,Math.round((isDem?60:12)/mpp));
+  let bi=-1,bv=0;
+  for(let y=cy-rad;y<=cy+rad;y++)for(let x=cx-rad;x<=cx+rad;x++){
+    if(x<0||y<0||x>=res.w||y>=res.h||(x-cx)*(x-cx)+(y-cy)*(y-cy)>rad*rad)continue;
+    const v=res.S[y*res.w+x];if(v>bv){bv=v;bi=y*res.w+x}
+  }
+  let near=-1;
+  entries.forEach((en,i)=>{if(Math.hypot(en.c.x-cx,en.c.y-cy)<=rad&&(near<0||en.c.S>entries[near].c.S))near=i});
+  if(near>=0){const en=entries.splice(near,1)[0];en.center=true;entries.unshift(en)}
+  else if(bi>=0&&bv>=thr*0.35){
+    const x=bi%res.w,y=(bi/res.w)|0;
+    const c={x,y,S:bv,zE:res.zE?res.zE[bi]:0,zL:res.zL?res.zL[bi]:0,coh:res.coh?res.coh[bi]:0,theta:res.theta?res.theta[bi]:0,dem:!!res.dem,crater:res.crater?res.crater[bi]:0};
+    c.st=CORE.blobStats(res.S,res.w,res.h,x,y,Math.max(thr*0.35,bv*0.5),mpp);
+    if(last&&last.mode==='multi'&&enrich)enrich([c]);
+    entries.unshift({c,st:c.st,center:true});
+    if(entries.length>10)entries.pop();
+  }
+  entries.centerScore=bv;
+  return entries;
 }
 
 function showResult(){
@@ -1695,7 +1768,7 @@ function showResult(){
     const snowC=last.dem?false:(last.mode==='multi'?!!(last.dates[c.best]&&last.dates[c.best].snow):!!last.snow);
     const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp,en.chain,snowC);
     const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
-    const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
+    const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(en.center?' · merkez':'');
     let dots='';
     if(last.mode==='multi')dots=c.per.map(v=>v>=thr*0.8?'●':'○').join('');
     let near=null;
@@ -1751,6 +1824,7 @@ function showResult(){
   if(last.note)s+='\n'+last.note;
   if(mpp>0.8&&!last.dem)s+='\nÇözünürlük düşük: yalnızca büyük izler.';
   if(!entries.length)s+='\nAday yok: eşiği düşürün.';
+  if(!entries.some(e=>e.center))s+='\nMerkezde iz yok (en güçlü skor '+(entries.centerScore||0).toFixed(1)+', eşik '+thr.toFixed(1)+')';
   $('aRes').textContent=s;
   selIdx=-1;
   if(candData.length)selectCand(0,false);else{$('cc').hidden=true;$('stage').classList.remove('hascc')}

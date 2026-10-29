@@ -84,7 +84,8 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 #tabs [data-tab]{min-width:0}
 #pToggle{flex:none;width:46px;border:0;border-radius:0;background:transparent;color:var(--ember);font-size:18px;padding:0}
 #fc{position:absolute;top:8px;right:8px;z-index:720;display:flex;flex-direction:column;gap:6px}
-#fc button{width:40px;height:40px;padding:0;border-radius:12px;background:rgba(16,23,30,.88);font-size:16px;font-weight:700}
+#fc{gap:4px}
+#fc button{width:38px;height:38px;padding:0;border-radius:12px;background:rgba(16,23,30,.88);font-size:16px;font-weight:700}
 #map3d{position:absolute;inset:0;z-index:5;background:#05090e}
 #stage.m3 #cross{display:none}
 #cc{position:absolute;left:8px;right:8px;bottom:8px;z-index:720;display:flex;align-items:center;gap:6px;background:rgba(16,23,30,.93);border:1px solid var(--ember);border-radius:12px;padding:5px}
@@ -94,8 +95,13 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 #ccNav{margin-top:3px;font-size:12.5px;font-weight:700;color:var(--ember)}
 #ccNav.arr{color:var(--ok)}
 #bWalk.on{background:var(--ember);color:#111}
-#tsBox{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:14px}
-#tsBox>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
+#tsBox,#phBox{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:14px}
+#tsBox>div,#phBox>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
+#phCv{width:100%;border-radius:8px;display:block;background:#05090e}
+#msr{position:absolute;left:8px;right:56px;top:8px;z-index:720;background:rgba(16,23,30,.93);border:1px solid var(--gok);border-radius:12px;padding:6px 8px;font-size:12.5px;display:flex;gap:6px;align-items:center}
+#msr span{flex:1}
+#msr button{width:34px;height:34px;padding:0;font-size:16px;border-radius:9px}
+.kn{width:16px;height:16px;background:#6fcf97;border:2px solid #fff;transform:rotate(45deg);border-radius:3px}
 #tsBox h3{margin:0 0 6px;font-size:15px}
 #tsBox p{margin:6px 0;font-size:13px}
 .srow{display:flex;gap:6px;margin:6px 0;align-items:stretch}
@@ -161,12 +167,14 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <button id="b3d" aria-label="2B / 3B">3B</button>
       <button id="bRot" aria-label="Döndürülebilir harita">↻</button>
       <button id="bWalk" aria-label="Yürüyerek doğrula">🚶</button>
+      <button id="bMsr" aria-label="Ölçüm">📏</button>
       <button id="bFull" aria-label="Tam ekran">⤢</button>
       <button id="zIn" aria-label="Yakınlaştır">+</button>
       <button id="zOut" aria-label="Uzaklaştır">−</button>
       <button id="bTilt" aria-label="Eğimi aç/kapat" hidden>⬍</button>
       <button id="bNorth" aria-label="Kuzeye döndür" hidden>⟲</button>
     </div>
+    <div id="msr" hidden><span id="msrT"></span><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
     <div id="cc" hidden><button id="ccPrev" aria-label="Önceki aday">‹</button><div id="ccBox"><div id="ccText"></div><div id="ccNav" hidden></div></div><button id="ccNext" aria-label="Sonraki aday">›</button></div>
   </div>
 
@@ -254,7 +262,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
           </select>
         </label>
         <label>Tarih seçimi (çok tarihli)
-          <select id="aSeason"><option value="auto" selected>Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option></select>
+          <select id="aSeason"><option value="dry" selected>Kurak dönemler (yağış verisi)</option><option value="snow">Kar dönemleri (kar yağışı verisi)</option><option value="auto">Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option></select>
         </label>
         <label>Gösterim
           <select id="aMode">
@@ -282,6 +290,8 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       </div>
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="aOsm" checked> Yol, bina, çit ve su hatlarını ele (OpenStreetMap)</label>
       <div class="btns">
+        <div class="btns"><button id="bPhoto">Kendi fotoğrafını analiz et</button><button id="bKnown">Yakındaki bilinen alanlar</button></div>
+        <input id="phFile" type="file" accept="image/*" hidden>
         <button id="bPreset" style="margin-bottom:8px">Hassas tarama ayarı (eşik 1.8, birleşik skor, OSM açık)</button>
         <button id="bAnalyze" class="pri">Bu görünümü analiz et</button>
         <button id="bSaveC">Adayları projeye kaydet</button>
@@ -321,6 +331,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <b>Oda Mezar İzi:</b> kare/dikdörtgen leke. <b>Lahit / Gömü:</b> küçük kompakt leke.<br>
         <b>Tünel Hattı / Hendek Hattı:</b> uzun düz iz (bitki zayıfsa tünel, canlıysa hendek).<br>
         <b>Bitki İzi / Toprak İzi:</b> ton farkı (crop / soil mark).<br>
+        <b>Erken / Geç Eriyen İz:</b> karlı görüntüde ısı ve nem farkı (kar sahnesi otomatik tanınır).<br>
         <b>Tarla Sınırı? · Sulama Deseni? · Koyu İz (gölge?):</b> büyük olasılıkla modern ya da doğal.<br><br>
         Skor büyükse iz güçlü. Güven en fazla “orta”. Yön: K–G, KD–GB, D–B, KB–GD.<br>
         Yükselti verisi 10–30 m çözünürlüklü: yalnızca büyük şekiller. Radar toprağın altını göstermez.<br><br>
@@ -331,6 +342,15 @@ body.full #brand,body.full #top,body.full #panel{display:none}
   </div>
 </div>
 
+<div id="phBox" hidden><div>
+  <canvas id="phCv" width="10" height="10"></canvas>
+  <div class="row2">
+    <label><span>Eşik: <b class="val" id="vPhThr">3.0</b></span><input id="phThr" type="range" min="1.5" max="8" step="0.1" value="3"></label>
+    <label>Görüntü genişliği (m)<input id="phW" type="number" min="1" step="1" value="30" inputmode="decimal"></label>
+  </div>
+  <div id="phList" style="font-size:13px"></div>
+  <div class="btns"><button id="phNote">Nota kaydet</button><button id="phClose">Kapat</button></div>
+</div></div>
 <div id="tsBox" hidden><div><h3 id="tsTitle"></h3><svg id="tsSvg" viewBox="0 0 320 150" width="100%" style="background:#0b1117;border-radius:8px"></svg><p id="tsText"></p><p class="hint" style="margin:0">Yeşillik farkı RGB görüntüden hesaplanır (NDVI değildir). Wayback tarihi yayın tarihidir, çekim tarihi bölgeye göre farklı olabilir.</p><div class="btns"><button id="tsClose">Kapat</button></div></div></div>
 <div id="dlg" hidden>
   <div class="card">
@@ -387,12 +407,12 @@ const CORE=(()=>{
 
   /* rgba: Uint8ClampedArray, w x h. mpp: metre/piksel. P.bgMeters: arka plan ölçeği */
   function analyze(rgba,w,h,mpp,P){
-    const n=w*h;
+    const n=w*h,snow=snowFrac(rgba,w,h)>0.35;   // karlı sahnede renk (bitki) bilgisi anlamsız: yalnız parlaklık
     const lum=new Float32Array(n),exg=new Float32Array(n);
     for(let i=0,j=0;i<n;i++,j+=4){
       const r=rgba[j],g=rgba[j+1],b=rgba[j+2],s=r+g+b+3;
       lum[i]=(0.299*r+0.587*g+0.114*b)/255;
-      exg[i]=(2*g-r-b)/s;                       // chromatic excess green
+      exg[i]=snow?0:(2*g-r-b)/s;                // chromatic excess green
     }
     const lumS=boxBlur(lum,w,h,1),exgS=boxBlur(exg,w,h,1);
     const R=Math.max(3,Math.min(Math.round(P.bgMeters/mpp),Math.floor(Math.min(w,h)/3)));
@@ -427,12 +447,12 @@ const CORE=(()=>{
     const nrg=new Float32Array(n),A=new Float32Array(n);
     for(let i=0;i<n;i++){
       nrg[i]=Math.min(en[i]/eS,1);
-      A[i]=Math.sqrt(zE[i]*zE[i]+zL[i]*zL[i])*0.70711;
+      A[i]=snow?Math.abs(zL[i]):Math.sqrt(zE[i]*zE[i]+zL[i]*zL[i])*0.70711;
     }
     const As=boxBlur(A,w,h,1);
     const S=new Float32Array(n);
     for(let i=0;i<n;i++)S[i]=As[i]*(0.35+0.65*coh[i]);
-    return {flat:false,w,h,R,zE,zL,coh,nrg,theta,As,S};
+    return {flat:false,snow,w,h,R,zE,zL,coh,nrg,theta,As,S};
   }
 
   function applyMask(S,mask){
@@ -595,8 +615,8 @@ const CORE=(()=>{
   }
 
   /* Aynı işaretli küçük adaylardan doğrusal, düzenli aralıklı zincirleri (çöküntü hattı) bulur */
-  function findChains(cands,mpp){
-    const minG=Math.max(2,10/mpp),maxG=60/mpp,tol=Math.max(1.3,2.5/mpp),out=[];
+  function findChains(cands,mpp,minGpx){
+    const minG=Math.max(2,minGpx||10/mpp),maxG=Math.max(60/mpp,minG*8),tol=Math.max(1.3,Math.min(2.5/mpp,0.3*minG)),out=[];
     const sign=c=>(c.dem||Math.abs(c.zL)>Math.abs(c.zE))?Math.sign(c.zL):Math.sign(c.zE);
     for(const sg of [-1,1]){
       let pool=[];cands.forEach((c,i)=>{if(sign(c)===sg)pool.push(i)});
@@ -629,7 +649,17 @@ const CORE=(()=>{
     return out;
   }
 
-  return {boxBlur,blobStats,findChains,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
+  /* Karlı sahne oranı: parlak ve renksiz piksellerin payı */
+  function snowFrac(rgba,w,h){
+    let n=0,c=0;
+    for(let i=0;i<w*h;i+=3){
+      const j=i*4,r=rgba[j],g=rgba[j+1],b=rgba[j+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+      n++;if(mx>185&&mx-mn<30)c++;
+    }
+    return n?c/n:0;
+  }
+
+  return {boxBlur,snowFrac,blobStats,findChains,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
 })();
 /*CORE-END*/
 </script>
@@ -704,6 +734,7 @@ if(typeof L==='undefined'){
 /* ---------- Harita ---------- */
 let v0={lat:39,lng:35,z:6};
 try{const j=JSON.parse(localStorage.getItem('uydu-view')||'null');if(j&&isFinite(j.lat)&&isFinite(j.lng)&&isFinite(j.z))v0=j}catch(e){}
+try{const m=location.hash.match(/ll=(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?/);if(m)v0={lat:+m[1],lng:+m[2],z:+(m[3]||18)}}catch(e){}
 const map=L.map('map',{zoomControl:false,maxZoom:21,minZoom:3,zoomAnimation:true}).setView([v0.lat,v0.lng],v0.z);
 map.attributionControl.setPrefix(false);
 L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
@@ -757,6 +788,7 @@ const info={A:null,B:null};
 let wbItems=[];
 let m3=null,is3d=false,m3Ready=false,m3Marks=[];
 let overlay=null,last=null;
+let knownSites=[];
 let probeTimer=null;const probeKey={A:'',B:''};
 
 function nativeLimit(base){const d=$('selDetail').value;return d==='auto'?base:Math.min(base,+d)}
@@ -1339,7 +1371,8 @@ async function runAnalysis(){
     }
     const mpp=156543.03392*Math.cos(map.getCenter().lat*Math.PI/180)/Math.pow(2,z);
     const o=await osmForRegion(z,x0,y0,cw,ch,mpp);
-    last={mode:'single',raw,sides,z,x0,y0,cw,ch,mpp,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:o.note};
+    const snowS=CORE.snowFrac(raw[sides[0]].data,cw,ch)>0.35;
+    last={mode:'single',snow:snowS,raw,sides,z,x0,y0,cw,ch,mpp,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:o.note};
     compute();
   }catch(e){
     setMsg('Analiz başarısız: '+e.message);
@@ -1397,10 +1430,21 @@ function compute(){
 }
 
 /* Çok tarihli analiz */
+let d_snowN=0;
 function pickDates(n){
   const mode=$('aSeason').value,mo=d=>+d.date.slice(5,7);
   let arr=wbItems;
-  if(mode!=='all'){const g=wbItems.filter(d=>mo(d)>=5&&mo(d)<=9);if(g.length>=(mode==='summer'?4:8))arr=g}
+  if(mode==='snow'&&climate.ok){
+    const w=wbItems.filter(d=>{const m=mo(d);return (m>=11||m<=3)&&(snow10(d.date)||0)>=1});
+    d_snowN=w.length;
+    if(w.length>=3)arr=w;
+    else{const w2=wbItems.filter(d=>{const m=mo(d);return m>=12||m<=2});if(w2.length>=3)arr=w2}
+  }
+  if(mode==='dry'&&climate.ok){
+    const dry=wbItems.filter(d=>{const q=dryPct(d.date);d.dryv=q;return q!=null&&q<=0.4&&mo(d)>=4&&mo(d)<=10});
+    if(dry.length>=4)arr=dry;
+  }
+  if(arr===wbItems&&mode!=='all'&&mode!=='snow'){const g=wbItems.filter(d=>mo(d)>=5&&mo(d)<=9);if(g.length>=(mode==='summer'?4:8))arr=g}
   const m=Math.min(arr.length,n),out=[],seen=new Set();
   for(let k=0;k<m;k++){
     const i=Math.round(k*(arr.length-1)/Math.max(1,m-1));
@@ -1420,6 +1464,7 @@ async function runMulti(){
     const c=map.project(map.getCenter(),z);
     const x0=Math.round(c.x-cw/2),y0=Math.round(c.y-ch/2);
     const mpp=156543.03392*Math.cos(map.getCenter().lat*Math.PI/180)/Math.pow(2,z);
+    if(['dry','snow'].includes($('aSeason').value)){setMsg('Yağış verisi alınıyor…');await ensureClimate()}
     const cands=pickDates(24);
     const tx=Math.floor((x0+cw/2)/256),ty=Math.floor((y0+ch/2)/256);
     setMsg('Tarihler taranıyor (aynı görüntünün tekrarları atlanacak)…');
@@ -1452,10 +1497,10 @@ async function runMulti(){
       const r=CORE.analyze(g.data.data,cw,ch,mpp,P);
       if(r.flat)continue;
       R=r.R;
-      dates.push({date:chosen[k].date,raw:g.data,S:CORE.applyMask(r.S,o.mask)});
+      dates.push({date:chosen[k].date,raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:chosen[k].dryv,snow:CORE.snowFrac(g.data.data,cw,ch)>0.35});
     }
     if(dates.length<2){setMsg('Yeterli sayıda tarihin görüntüsü alınamadı.');return}
-    last={mode:'multi',dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:o.note,desc:new Map()};
+    last={mode:'multi',dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:(o.note?o.note+'\n':'')+($('aSeason').value==='snow'?(climate.ok?'Kar dönemi seçimi: '+d_snowN+' kar tarihi bulundu, '+dates.filter(d=>d.snow).length+'/'+dates.length+' görüntüde kar var':'Kar verisi alınamadı'):'')+($('aSeason').value==='dry'?(climate.ok?'Kurak dönem seçimi: '+dates.filter(d=>d.dry!=null&&d.dry<=0.4).length+'/'+dates.length+' tarih kurak':'Yağış verisi alınamadı, yaz tarihleri kullanıldı'):''),desc:new Map()};
     setMsg('');
     showResult();
   }catch(e){
@@ -1489,7 +1534,7 @@ function describe(c){
 const DIRS=['K–G','KD–GB','D–B','KB–GD'];
 
 /* Net yorum: kural tabanlı tahmin (kesin bilgi değildir) */
-function verdict(c,st,seenRatio,spanM,chain){
+function verdict(c,st,seenRatio,spanM,chain,snow){
   const L=st.L,W=Math.max(st.W,0.01),el=L/W;
   let name;
   const vegDom=Math.abs(c.zE)>=Math.abs(c.zL);
@@ -1504,12 +1549,14 @@ function verdict(c,st,seenRatio,spanM,chain){
   else if(L<7&&st.area<40)name='Lahit / Gömü';
   else if(L<30){
     if(st.rect>=0.85&&el<3&&L>=2.5)name='Oda Mezar İzi';
+    else if(snow)name=c.zL<0?'Erken Eriyen İz':'Geç Eriyen İz';
     else if(vegDom)name=c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)';
     else name=c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)';
   }
   else if(L>=60&&el<2)name='Sulama Deseni?';
+  else if(snow)name=c.zL<0?'Erken Eriyen İz':'Geç Eriyen İz';
   else name=vegDom?(c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)'):(c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)');
-  if(!c.dem&&!chain&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
+  if(!c.dem&&!chain&&!snow&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
   let conf='düşük';
   if(seenRatio!=null&&seenRatio>=0.6&&!/\?\)?$/.test(name))conf='orta';
   const size=chain?Math.round(st.L)+' m · '+chain.n+' çukur':(L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm');
@@ -1593,6 +1640,31 @@ function makeThumb(img,cx,cy){
   return o.toDataURL('image/jpeg',0.7);
 }
 
+/* Aday + leke + zincir birleştirme (harita ve fotoğraf analizi ortak kullanır) */
+function buildEntries(res,mpp,thr,isDem,enrich){
+  const raw=CORE.pickCandidates(res,mpp,thr,80);
+  const owner=new Int32Array(res.w*res.h),pool=[];
+  for(const c of raw){
+    if(owner[c.y*res.w+c.x]>0)continue;
+    c.st=CORE.blobStats(res.S,res.w,res.h,c.x,c.y,Math.max(thr*0.6,c.S*0.5),mpp,owner,pool.length+1);
+    pool.push(c);
+    if(pool.length>=24)break;
+  }
+  if(enrich)enrich(pool);
+  const cc=pool.map((c,i)=>({i,c})).filter(o=>isDem?(o.c.zL<0&&o.c.st.L<150):(o.c.st.L<12&&!o.c.st.capped));
+  const chains=CORE.findChains(cc.map(o=>o.c),mpp,res.nms||Math.max(4,Math.min(30,Math.round(10/mpp)))).map(ch=>Object.assign({},ch,{idx:ch.idx.map(j=>cc[j].i)}));
+  const inChain=new Set();chains.forEach(ch=>ch.idx.forEach(i=>inChain.add(i)));
+  let entries=[];
+  chains.forEach(ch=>{
+    const mem=ch.idx.map(i=>pool[i]);
+    const base=mem.reduce((a,b)=>b.S>a.S?b:a,mem[0]);
+    entries.push({c:base,st:{L:ch.len,W:1,area:0,rect:0,bear:ch.bearing,capped:false},chain:ch,mem});
+  });
+  pool.forEach((c,i)=>{if(!inChain.has(i))entries.push({c,st:c.st})});
+  entries.sort((a,b)=>b.c.S-a.c.S);
+  return entries.slice(0,10);
+}
+
 function showResult(){
   if(!last)return;
   const thr=+$('aThr').value;let mode=$('aMode').value;
@@ -1615,37 +1687,19 @@ function showResult(){
 
   candLayer.clearLayers();
   const list=$('candList');list.innerHTML='';
-  const raw=CORE.pickCandidates(res,mpp,thr,80);
-  const owner=new Int32Array(res.w*res.h),pool=[];
-  for(const c of raw){
-    if(owner[c.y*res.w+c.x]>0)continue;            // aynı lekenin parçası: tekrar sayma
-    c.st=CORE.blobStats(res.S,res.w,res.h,c.x,c.y,Math.max(thr*0.6,c.S*0.5),mpp,owner,pool.length+1);
-    pool.push(c);
-    if(pool.length>=24)break;
-  }
-  if(last.mode==='multi')enrichMulti(pool,thr);
-  const cc=pool.map((c,i)=>({i,c})).filter(o=>last.dem?(o.c.zL<0&&o.c.st.L<150):(o.c.st.L<12&&!o.c.st.capped));
-  const chains=CORE.findChains(cc.map(o=>o.c),mpp).map(ch=>Object.assign({},ch,{idx:ch.idx.map(j=>cc[j].i)}));
-  const inChain=new Set();chains.forEach(ch=>ch.idx.forEach(i=>inChain.add(i)));
-  let entries=[];
-  chains.forEach(ch=>{
-    const mem=ch.idx.map(i=>pool[i]);
-    const base=mem.reduce((a,b)=>b.S>a.S?b:a,mem[0]);
-    entries.push({c:base,st:{L:ch.len,W:1,area:0,rect:0,bear:ch.bearing,capped:false},chain:ch,mem});
-  });
-  pool.forEach((c,i)=>{if(!inChain.has(i))entries.push({c,st:c.st})});
-  entries.sort((a,b)=>b.c.S-a.c.S);entries=entries.slice(0,10);
+  const entries=buildEntries(res,mpp,thr,last.dem,pool=>{if(last.mode==='multi')enrichMulti(pool,thr)});
   lastCands=[];candData=[];
   entries.forEach((en,k)=>{
     const c=en.c,st=en.st;
     const ll=map.unproject([x0+c.x+0.5,y0+c.y+0.5],z);
-    const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp,en.chain);
+    const snowC=last.dem?false:(last.mode==='multi'?!!(last.dates[c.best]&&last.dates[c.best].snow):!!last.snow);
+    const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp,en.chain,snowC);
     const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
     const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
     let dots='';
     if(last.mode==='multi')dots=c.per.map(v=>v>=thr*0.8?'●':'○').join('');
     let near=null;
-    for(const sx of last.siteList||[]){const d=ll.distanceTo([sx.lat,sx.lon]);if(!near||d<near.d)near={d,s:sx}}
+    for(const sx of (last.siteList||[]).concat(knownSites)){const d=ll.distanceTo([sx.lat,sx.lon]);if(!near||d<near.d)near={d,s:sx}}
     const nearTxt=(near&&near.d<200)?'kayıtlı alan: '+(near.s.name||near.s.kind)+' '+Math.round(near.d)+' m':'';
     const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'');
     const txt=head+' · '+sub+(nearTxt?' · '+nearTxt:'');
@@ -1672,6 +1726,9 @@ function showResult(){
     const wb2=document.createElement('button');wb2.textContent='Yürüyerek git';
     wb2.onclick=()=>{map.closePopup();selectCand(k,false);startWalk()};
     box.appendChild(wb2);
+    const shb=document.createElement('button');shb.textContent='Paylaş';
+    shb.onclick=()=>shareLoc(ll.lat,ll.lng,head+' · '+sub);
+    box.appendChild(shb);
     const nb=document.createElement('button');nb.textContent='Nota ekle';
     nb.onclick=()=>{map.closePopup();openNote(ll.lat,ll.lng,txt+'\n')};
     box.appendChild(nb);
@@ -1980,6 +2037,194 @@ async function findBest(){
   finally{btn.disabled=false}
 }
 $('bBest').onclick=findBest;
+
+/* ---------- Yağış / kuraklık ---------- */
+const climate={ok:false,key:'',idx:null,pre:null};
+async function ensureClimate(){
+  const c=map.getCenter(),key=c.lat.toFixed(1)+','+c.lng.toFixed(1);
+  if(climate.ok&&climate.key===key)return true;
+  climate.ok=false;
+  try{
+    const end=new Date(Date.now()-6*864e5).toISOString().slice(0,10);
+    const r=await fetch('https://archive-api.open-meteo.com/v1/archive?latitude='+c.lat.toFixed(3)+'&longitude='+c.lng.toFixed(3)+'&start_date=2013-01-01&end_date='+end+'&daily=precipitation_sum,snowfall_sum&timezone=UTC');
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json(),t=j.daily.time,p=j.daily.precipitation_sum,sn=j.daily.snowfall_sum||[];
+    const pre=new Float64Array(t.length+1),spre=new Float64Array(t.length+1),idx=new Map();
+    for(let i=0;i<t.length;i++){pre[i+1]=pre[i]+(p[i]||0);spre[i+1]=spre[i]+(sn[i]||0);idx.set(t[i],i)}
+    climate.key=key;climate.idx=idx;climate.pre=pre;climate.spre=spre;climate.ok=true;
+  }catch(e){climate.ok=false}
+  return climate.ok;
+}
+/* Tarihten önceki 10 günün toplam kar yağışı (cm) */
+function snow10(date){
+  if(!climate.ok||!climate.spre)return null;
+  const i=climate.idx.get(date);
+  if(i==null||i<9)return null;
+  return climate.spre[i+1]-climate.spre[i-9];
+}
+/* 0 = aynı tarihteki yıllara göre en kurak, 1 = en yağışlı (önceki 90 günün yağışı) */
+function dryPct(date){
+  if(!climate.ok)return null;
+  const i=climate.idx.get(date);
+  if(i==null||i<89)return null;
+  const val=climate.pre[i+1]-climate.pre[i-89],md=date.slice(5);
+  let n=0,lower=0;
+  for(const [d,j] of climate.idx){
+    if(j>=89&&d.slice(5)===md){n++;if(climate.pre[j+1]-climate.pre[j-89]<val)lower++}
+  }
+  return n>=4?lower/n:null;
+}
+
+/* ---------- Konum paylaş ---------- */
+function shareLoc(lat,lon,label){
+  const url=location.origin+location.pathname+'#ll='+lat.toFixed(6)+','+lon.toFixed(6)+',19';
+  if(navigator.share){navigator.share({title:'Bozkurt Uydu',text:label,url}).catch(()=>{})}
+  else if(navigator.clipboard){navigator.clipboard.writeText(url).then(()=>setMsg('Bağlantı kopyalandı.')).catch(()=>setMsg(url))}
+  else setMsg(url);
+}
+
+/* ---------- Yakındaki bilinen alanlar (Wikidata) ---------- */
+const knownLayer=L.layerGroup().addTo(map);
+async function loadKnown(){
+  const c=map.getCenter(),btn=$('bKnown');
+  btn.disabled=true;setMsg('Bilinen alanlar aranıyor…');
+  try{
+    const q='SELECT ?item ?itemLabel ?c WHERE { SERVICE wikibase:around { ?item wdt:P625 ?c . bd:serviceParam wikibase:center "Point('+c.lng.toFixed(5)+' '+c.lat.toFixed(5)+')"^^geo:wktLiteral . bd:serviceParam wikibase:radius "15" . } ?item wdt:P31/wdt:P279* wd:Q839954 . SERVICE wikibase:label { bd:serviceParam wikibase:language "tr,en". } } LIMIT 80';
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),25000);
+    const r=await fetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{signal:ctl.signal,headers:{Accept:'application/sparql-results+json'}});
+    clearTimeout(to);
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json();
+    knownLayer.clearLayers();knownSites=[];
+    for(const b of j.results.bindings){
+      const m=(b.c.value||'').match(/Point\(([-\d.]+) ([-\d.]+)\)/);
+      if(!m)continue;
+      const lon=+m[1],lat=+m[2],name=b.itemLabel?b.itemLabel.value:'Adsız alan';
+      knownSites.push({lat,lon,name,kind:'Wikidata'});
+      const d=Math.round(c.distanceTo([lat,lon]));
+      const mk=L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="kn"></div>',iconSize:[16,16],iconAnchor:[8,8]})});
+      mk.bindPopup('<div class="popup"><p><b>'+esc(name)+'</b></p><small>Bilinen arkeolojik alan (Wikidata) · merkezden '+(d>=1000?(d/1000).toFixed(1)+' km':d+' m')+'</small></div>');
+      knownLayer.addLayer(mk);
+    }
+    setMsg(knownSites.length?knownSites.length+' bilinen alan işaretlendi (yeşil).':'15 km içinde kayıtlı arkeolojik alan bulunamadı.');
+  }catch(e){setMsg('Bilinen alanlar alınamadı ('+(e.name==='AbortError'?'zaman aşımı':e.message)+').')}
+  finally{btn.disabled=false}
+}
+$('bKnown').onclick=loadKnown;
+
+/* ---------- Ölçüm aracı ---------- */
+let msrOn=false,msrPts=[];
+const msrLayer=L.layerGroup().addTo(map);
+function fmtM(v){return v>=1000?(v/1000).toFixed(2)+' km':(v>=10?Math.round(v):v.toFixed(1))+' m'}
+function msrRender(){
+  msrLayer.clearLayers();
+  if(msrPts.length>1)msrLayer.addLayer(L.polyline(msrPts,{color:'#6cc3ea',weight:3,interactive:false}));
+  if(msrPts.length>2)msrLayer.addLayer(L.polygon(msrPts,{color:'#6cc3ea',weight:1,fillOpacity:0.12,interactive:false}));
+  msrPts.forEach(q=>msrLayer.addLayer(L.circleMarker(q,{radius:5,color:'#fff',weight:2,fillColor:'#6cc3ea',fillOpacity:1,interactive:false})));
+  let len=0;for(let i=1;i<msrPts.length;i++)len+=msrPts[i-1].distanceTo(msrPts[i]);
+  let t=msrPts.length+' nokta';
+  if(msrPts.length>1){
+    t+=' · '+fmtM(len);
+    const a=msrPts[msrPts.length-2],b=msrPts[msrPts.length-1],br=brg(a,b);
+    t+=' · yön '+CARDN[Math.round(br/45)%8]+' '+Math.round(br)+'°';
+  }
+  if(msrPts.length>2){
+    const lat0=msrPts[0].lat,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+    let A=0;
+    for(let i=0;i<msrPts.length;i++){
+      const p1=msrPts[i],p2=msrPts[(i+1)%msrPts.length];
+      A+=(p1.lng*kx)*(p2.lat*ky)-(p2.lng*kx)*(p1.lat*ky);
+    }
+    A=Math.abs(A)/2;
+    t+=' · alan '+(A>=10000?(A/10000).toFixed(2)+' ha':Math.round(A)+' m²');
+  }
+  $('msrT').textContent=msrPts.length?t:'Haritaya dokunarak nokta ekleyin';
+}
+function msrToggle(on){
+  msrOn=on;$('msr').hidden=!on;$('bMsr').classList.toggle('on',on);
+  if(!on){msrPts=[];msrLayer.clearLayers()}else msrRender();
+}
+map.on('click',e=>{if(msrOn&&!is3d){msrPts.push(e.latlng);msrRender()}});
+$('bMsr').onclick=()=>msrToggle(!msrOn);
+$('msrUndo').onclick=()=>{msrPts.pop();msrRender()};
+$('msrClr').onclick=()=>msrToggle(false);
+
+/* ---------- Kendi fotoğrafını analiz et ---------- */
+let ph=null;
+$('bPhoto').onclick=()=>$('phFile').click();
+$('phFile').onchange=e=>{
+  const f=e.target.files[0];e.target.value='';
+  if(!f)return;
+  const im=new Image(),u=URL.createObjectURL(f);
+  im.onload=()=>{
+    const sc=Math.min(1,1000/Math.max(im.width,im.height)),w=Math.round(im.width*sc),h=Math.round(im.height*sc);
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    const g=cv.getContext('2d',{willReadFrequently:true});g.drawImage(im,0,0,w,h);
+    URL.revokeObjectURL(u);
+    ph={cv,w,h,data:g.getImageData(0,0,w,h)};
+    ph.snow=CORE.snowFrac(ph.data.data,w,h)>0.35;
+    $('phThr').value=$('aThr').value;$('vPhThr').textContent=(+$('aThr').value).toFixed(1);
+    $('phBox').hidden=false;
+    setTimeout(runPhoto,30);
+  };
+  im.onerror=()=>setMsg('Fotoğraf açılamadı.');
+  im.src=u;
+};
+function runPhoto(){
+  if(!ph)return;
+  const mpp=Math.max(0.001,(+$('phW').value||30)/ph.w);
+  const r=CORE.analyze(ph.data.data,ph.w,ph.h,mpp,{bgMeters:+$('aBg').value});
+  ph.r=r.flat?null:r;ph.mpp=mpp;
+  renderPhoto();
+}
+function renderPhoto(){
+  if(!ph)return;
+  const cv=$('phCv'),thr=+$('phThr').value;
+  cv.width=ph.w;cv.height=ph.h;
+  const g=cv.getContext('2d');
+  g.drawImage(ph.cv,0,0);
+  const list=$('phList');list.innerHTML='';
+  ph.entries=[];
+  if(!ph.r){list.textContent='Görüntü düz ya da boş görünüyor.';return}
+  const ov=document.createElement('canvas');ov.width=ph.w;ov.height=ph.h;
+  ov.getContext('2d').putImageData(new ImageData(CORE.render(ph.r,'combined',thr,null),ph.w,ph.h),0,0);
+  g.globalAlpha=0.65;g.drawImage(ov,0,0);g.globalAlpha=1;
+  const span=Math.min(ph.w,ph.h)*ph.mpp;
+  const entries=buildEntries(ph.r,ph.mpp,thr,false,null);
+  const rad=Math.max(11,Math.round(ph.w/55));
+  entries.forEach((en,k)=>{
+    const V=verdict(en.c,en.st,null,span,en.chain,ph.snow);
+    const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
+    const head='#'+(k+1)+' skor '+en.c.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
+    ph.entries.push(head+' · '+V.size);
+    if(en.chain){
+      g.strokeStyle='#ffb347';g.lineWidth=3;g.setLineDash([8,8]);g.beginPath();
+      en.mem.slice().sort((a,b)=>a.x-b.x||a.y-b.y).forEach((m,i)=>{i?g.lineTo(m.x,m.y):g.moveTo(m.x,m.y)});
+      g.stroke();g.setLineDash([]);
+    }
+    g.fillStyle='#f0883a';g.strokeStyle='#fff';g.lineWidth=2;
+    g.beginPath();g.arc(en.c.x,en.c.y,rad,0,7);g.fill();g.stroke();
+    g.fillStyle='#111';g.font='bold '+Math.round(rad*1.1)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+    g.fillText(String(k+1),en.c.x,en.c.y+1);
+    const d=document.createElement('div');d.style.cssText='margin:5px 0';
+    d.innerHTML='<b>'+esc(head)+'</b><br><span style="color:#8b9aa8">'+esc(V.size)+'</span>';
+    list.appendChild(d);
+  });
+  if(!entries.length)list.textContent='Aday yok: eşiği düşürün.';
+}
+$('phThr').oninput=e=>{$('vPhThr').textContent=(+e.target.value).toFixed(1);clearTimeout(deb);deb=setTimeout(renderPhoto,120)};
+$('phW').oninput=()=>{clearTimeout(deb);deb=setTimeout(runPhoto,300)};
+$('phClose').onclick=()=>{$('phBox').hidden=true};
+$('phNote').onclick=()=>{
+  if(!ph)return;
+  const c=map.getCenter(),out=document.createElement('canvas');
+  const sc=Math.min(1,900/ph.w);out.width=Math.round(ph.w*sc);out.height=Math.round(ph.h*sc);
+  out.getContext('2d').drawImage($('phCv'),0,0,out.width,out.height);
+  notes.push({id:Date.now()+''+Math.floor(Math.random()*1000),lat:c.lat,lon:c.lng,
+    text:'Fotoğraf analizi ('+Math.round(ph.w*ph.mpp)+' m genişlik)\n'+ph.entries.slice(0,6).join('\n'),photo:out.toDataURL('image/jpeg',0.75),t:Date.now()});
+  saveNotes();renderNotes();$('phBox').hidden=true;
+  setMsg('Fotoğraf analizi nota kaydedildi (harita merkezine).');
+};
 
 /* ---------- Zaman serisi ---------- */
 async function showSeries(k){

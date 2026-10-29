@@ -515,7 +515,7 @@ const CORE=(()=>{
       for(const c of out){if(Math.hypot(c.x-x,c.y-y)<Math.max(c.r,r)*1.2||(best[i]<0.35*c.S&&Math.hypot(c.x-x,c.y-y)<4*Math.max(c.r,r))){ok=false;break}}
       if(!ok)continue;
       if(++tries>40)break;
-      const sf=soft(x,y,r);if(global.DBG)console.log('cand',x,y,r,best[i].toFixed(1),sf.toFixed(2));
+      const sf=soft(x,y,r);
       if(sf>4.5){out.rej=(out.rej||[]);out.rej.push({x,y,r});continue}
       // Yapay nesne ayıklama: kiremit/çatı rengi ve keskin kenar (gerçek höyükte yumuşak geçiş olur)
       let roof=0,np=0;const rr=Math.round(r*0.9);
@@ -524,7 +524,7 @@ const CORE=(()=>{
         const j=(yy*w+xx)*4,R=rgba[j],G=rgba[j+1],B=rgba[j+2];np++;
         if(R>G+20&&R>B+45)roof++;
       }
-      if(np&&roof/np>0.10){if(global.DBG)console.log("roof",x,y,r,roof/np);continue}
+      if(np&&roof/np>0.10){continue}
       out.push({x,y,r,S:best[i],Dm:2*r*mpp});
       if(out.length>=4)break;
     }
@@ -1408,12 +1408,33 @@ function showSites(sites){
 /* ---------- Analiz: akış ---------- */
 const SIDE_NAME={A:'A (sol)',B:'B (sağ)'};
 
+let osmBear=null;
+function dominantBearings(osm){
+  const H=new Float32Array(180);let tot=0;
+  for(const el of osm.ways){
+    const t=el.tags||{};if(!(t.highway||t.building||t.barrier||t.railway||t.waterway))continue;
+    const g=el.geometry;
+    for(let i=1;i<g.length;i++){
+      const dx=(g[i].lon-g[i-1].lon)*Math.cos(g[i].lat*Math.PI/180),dy=g[i].lat-g[i-1].lat,len=Math.hypot(dx,dy);
+      if(len<=0)continue;
+      const b=((Math.atan2(dx,dy)*180/Math.PI)%180+180)%180;
+      H[Math.floor(b)%180]+=len;tot+=len;
+    }
+  }
+  if(tot<=0)return null;
+  const S=new Float32Array(180);
+  for(let b=0;b<180;b++)for(let k=-4;k<=4;k++)S[b]+=H[(b+k+180)%180];
+  let bi=0;for(let b=1;b<180;b++)if(S[b]>S[bi])bi=b;
+  return bi;
+}
+function angDiff(a,b){const d=Math.abs(a-b)%180;return Math.min(d,180-d)}
 async function osmForRegion(z,x0,y0,cw,ch,mpp){
   if(!$('aOsm').checked){siteLayer.clearLayers();return {osm:null,mask:null,note:''}}
   const nw=map.unproject([x0,y0],z),se=map.unproject([x0+cw,y0+ch],z);
   const osm=await fetchOSM({s:se.lat,w:nw.lng,n:nw.lat,e:se.lng});
   if(osm.error){siteLayer.clearLayers();return {osm:null,mask:null,note:'OSM verisi alınamadı ('+osm.error+'), eleme yapılmadı.'}}
   showSites(osm.sites);
+  osmBear=dominantBearings(osm);
   const {mask,covered}=buildMask(osm,z,x0,y0,cw,ch,mpp);
   return {osm,mask,note:'OSM: '+osm.ways.length+' hat elendi · '+osm.sites.length+' kayıtlı alan'};
 }
@@ -1614,7 +1635,7 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   const L=st.L,W=Math.max(st.W,0.01),el=L/W;
   let name;
   const vegDom=Math.abs(c.zE)>=Math.abs(c.zL);
-  if(c.mound)name=(L>=12&&L<=250)?'Höyük / Tümülüs?':'Geniş Leke';
+  if(c.mound)name=(L>=12&&L<=250)?(c.pit?'Yağmalı Tümülüs?':'Höyük / Tümülüs?'):'Geniş Leke';
   else if(chain)name='Çöküntü Hattı';
   else if(c.dem){
     if(c.zL>0&&c.crater)name='Çöken Tümülüs';
@@ -1636,6 +1657,7 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   if(!c.dem&&!chain&&!snow&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
   let conf='düşük';
   if(seenRatio!=null&&seenRatio>=0.6&&!/\?\)?$/.test(name))conf='orta';
+  if(c.oriC!=null&&!chain&&!c.mound&&st.L/W>=2&&c.oriC<0.5)conf='düşük';
   const size=chain?Math.round(st.L)+' m · '+chain.n+' çukur':(L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm');
   return {name,conf,size,round:!chain&&el<1.6,bear:chain?chain.bearing:st.bear};
 }
@@ -1675,6 +1697,25 @@ function enrichMulti(cands,thr){
       const v=last.desc.get(d+':'+c.x+':'+c.y);
       if(v)Object.assign(c,v);
     }
+  }
+  // Yıllar arası yön tutarlılığı: izin göründüğü her tarihte çizgi yönü aynı mı?
+  last.thetaC=last.thetaC||new Map();
+  for(const c of cands){
+    if(c.seen<3){c.oriC=null;continue}
+    let sx=0,sy=0,n=0;
+    for(let d=0;d<dates.length;d++){
+      if(c.per[d]<thr*0.8)continue;
+      let th=last.thetaC.get(d+':'+c.x+':'+c.y);
+      if(th===undefined){
+        if(!last.thetaFull)last.thetaFull=new Map();
+        let T=last.thetaFull.get(d);
+        if(!T){const r=CORE.analyze(dates[d].raw.data,cw,ch,last.mpp,{bgMeters:+$('aBg').value});T=r.flat?null:r.theta;last.thetaFull.set(d,T)}
+        th=T?T[c.y*cw+c.x]:null;last.thetaC.set(d+':'+c.x+':'+c.y,th);
+      }
+      if(th==null)continue;
+      sx+=Math.cos(2*th);sy+=Math.sin(2*th);n++;
+    }
+    c.oriC=n>=3?Math.hypot(sx,sy)/n:null;
   }
 }
 
@@ -1746,6 +1787,12 @@ function buildEntries(res,mpp,thr,isDem,enrich){
         if(nn&&mk/nn>0.15)continue}
       const i=m.y*res.w+m.x;
       const c={x:m.x,y:m.y,S:Math.min(12,m.S),zE:res.zE?res.zE[i]:0,zL:res.zL?res.zL[i]:0,coh:0,theta:0,dem:false,crater:0,mound:true};
+      let mn=0;const rr=Math.max(2,Math.round(m.r*0.6));
+      for(let yy=m.y-rr;yy<=m.y+rr;yy++)for(let xx=m.x-rr;xx<=m.x+rr;xx++){
+        if(xx<0||yy<0||xx>=res.w||yy>=res.h||(xx-m.x)*(xx-m.x)+(yy-m.y)*(yy-m.y)>rr*rr)continue;
+        const v=res.zL[yy*res.w+xx];if(v<mn)mn=v;
+      }
+      c.pit=mn<-5;
       entries.push({c,st:{L:m.Dm,W:m.Dm,area:Math.PI*m.Dm*m.Dm/4,rect:0,bear:0,capped:false},mound:true});
     }
   }
@@ -1802,14 +1849,20 @@ function showResult(){
     const ll=map.unproject([x0+c.x+0.5,y0+c.y+0.5],z);
     const snowC=last.dem?false:(last.mode==='multi'?!!(last.dates[c.best]&&last.dates[c.best].snow):!!last.snow);
     const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp,en.chain,snowC);
+    let aligned=false;
+    if(!V.round&&osmBear!=null&&st.L>=8&&!last.dem){
+      aligned=angDiff(V.bear,osmBear)<9||angDiff(V.bear,(osmBear+90)%180)<9;
+      if(aligned)V.conf='düşük';
+    }
     const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
-    const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(en.center?' · merkez':'');
+    const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(aligned?' · yol hizası':'')+(en.center?' · merkez':'');
     let dots='';
     if(last.mode==='multi')dots=c.per.map(v=>v>=thr*0.8?'●':'○').join('');
     let near=null;
     for(const sx of (last.siteList||[]).concat(knownSites)){const d=ll.distanceTo([sx.lat,sx.lon]);if(!near||d<near.d)near={d,s:sx}}
     const nearTxt=(near&&near.d<200)?'kayıtlı alan: '+(near.s.name||near.s.kind)+' '+Math.round(near.d)+' m':'';
-    const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'');
+    const oriT=(last.mode==='multi'&&c.oriC!=null&&!V.round)?(c.oriC>=0.8?' · yön tutarlı':c.oriC<0.5?' · yön tutarsız':''):'';
+    const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'')+oriT;
     const txt=head+' · '+sub+(nearTxt?' · '+nearTxt:'');
     let thumb=null;
     try{

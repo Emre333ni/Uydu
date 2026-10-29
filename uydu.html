@@ -1646,9 +1646,9 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   }
   else if(st.capped||(L>=0.6*spanM&&el>=6))name='Tarla Sınırı?';
   else if(el>=3.5&&L>=12)name=(vegDom&&c.zE>0)?'Hendek Hattı':'Tünel Hattı';
-  else if(L<7&&st.area<40)name='Lahit / Gömü';
+  else if(L<7&&st.area<40)name=(L>=1.5&&c.S>=4&&(seenRatio==null||seenRatio>=0.5))?'Lahit / Gömü':'Zayıf İz';
   else if(L<30){
-    if(st.rect>=0.85&&el<3&&L>=2.5)name='Oda Mezar İzi';
+    if(st.rect>=0.85&&el<3&&L>=2.5&&c.S>=4&&(seenRatio==null||seenRatio>=0.5))name='Oda Mezar İzi';
     else if(snow)name=c.zL<0?'Erken Eriyen İz':'Geç Eriyen İz';
     else if(vegDom)name=c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)';
     else name=c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)';
@@ -1656,7 +1656,8 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   else if(L>=60&&el<2)name='Sulama Deseni?';
   else if(snow)name=c.zL<0?'Erken Eriyen İz':'Geç Eriyen İz';
   else name=vegDom?(c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)'):(c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)');
-  if(!c.dem&&!chain&&!snow&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
+  if(!c.mound&&!chain&&c.S<2.5)name='Zayıf İz';
+  if(!c.dem&&!chain&&!snow&&name!=='Zayıf İz'&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
   let conf='düşük';
   if(seenRatio!=null&&seenRatio>=0.6&&!/\?\)?$/.test(name))conf='orta';
   if(c.oriC!=null&&!chain&&!c.mound&&st.L/W>=2&&c.oriC<0.5)conf='düşük';
@@ -2132,11 +2133,12 @@ async function tileReal(tpl,subs,z,c){
   if(far){try{if(CORE.sigDiff(a.sig,imgSig(far).sig)<0.0005)return false}catch(e){}}  // başka yerdeki döşemeyle aynı: boş döşeme
   return true;
 }
-async function probeNative(tpl,subs,c,maxZ){
+async function probeNative(tpl,subs,c,maxZ,lenient){
   let lo=11,hi=maxZ;                                   // lo: kesin var sayılır
   while(lo<hi){
     const mid=Math.ceil((lo+hi)/2);
     const r=await tileReal(tpl,subs,mid,c);
+    if(r===null&&lenient&&navigator.onLine!==false){if(await tileReal(tpl,subs,mid,c)===null)r=false;else continue}
     if(r===null)throw new Error('ağ');
     if(r)lo=mid;else hi=mid-1;
   }
@@ -2175,8 +2177,8 @@ async function findBest(){
   btn.disabled=true;
   try{
     setMsg('Bu konumdaki görüntü seviyeleri ölçülüyor…');
-    const zE=await probeNative(LAYERS.esri.url,'abc',c,19);
-    const zC=await probeNative(LAYERS.clarity.url,'abc',c,19);
+    const zE=await probeNative(LAYERS.esri.url,'abc',c,19,true);
+    const zC=await probeNative(LAYERS.clarity.url,'abc',c,19,true);
     let bestZ=Math.max(zE,zC),pick=null;
     const items=wbItems.slice(0,120);
     for(let z=19;z>bestZ&&!pick;z--){

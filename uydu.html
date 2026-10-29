@@ -289,7 +289,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       </div>
       <div id="aRes"></div>
       <div id="candList"></div>
-      <p class="hint">Bu bir ön eleme aracıdır, tespit değil. OpenStreetMap kırsalda eksiktir, yol ve çit gibi bazı izler yine aday çıkabilir. Önce Perde ile farklı yıllara bakın, sonra yerinde gözlemleyin.</p>
+      <p class="hint">Ön eleme aracıdır, tespit değil. Yerinde doğrulayın.</p>
     </div>
 
     <div class="sec" id="t3" hidden>
@@ -310,23 +310,21 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <button id="bReport">Müze bildirim raporu</button>
       </div>
       <div id="noteList"></div>
-      <p class="hint">Notlar yalnızca bu cihazın tarayıcısında saklanır. Safari verisini silerseniz kaybolur, bu yüzden önemli notları GeoJSON ya da KML olarak indirin.</p>
+      <p class="hint">Notlar yalnızca bu cihazda saklanır. GeoJSON/KML ile yedekleyin.</p>
     </div>
 
     <div class="sec" id="t4" hidden>
       <p class="hint" style="margin-top:0">
-        <b>Bitki anomalisi:</b> Gömülü duvar ve sert zemin üstündeki bitki daha az su bulur, soluk ya da kurak kalır. Gömülü hendek, çukur ve dolgu üstündeki bitki daha canlı olur. Uygulama yeşillik farkını çevresine göre ölçer. Kurak mevsimde, ekili tarlada ve düşük açılı güneşte en iyi sonuç verir. Çıplak toprakta bitki anomalisi çıkmaz.<br><br>
-        <b>Toprak parlaklığı:</b> Çıplak ya da seyrek bitkili alanda taş, kireç ya da farklı dolgu toprağı daha açık görünür.<br><br>
-        <b>Çizgisel iz:</b> Birbirine paralel ve düz uzanan anomaliler doğal oluşumdan çok insan yapısına benzer. Birleşik skor, anomalinin şiddetini çizgiselliğiyle çarpar.<br><br>
-        <b>Çok tarihli analiz:</b> Aynı yer için farklı yıllara ait ayrı görüntüler seçilir (aynı görüntünün tekrarları atlanır). Ekin izleri çoğunlukla yalnızca kurak yıllarda görünür, yani 10 tarihten 2'sinde çıkan güçlü iz anlamsız değildir. Çoğu tarihte çıkan iz ise kalıcıdır; yapı olabilir, ama yol, çit ya da tarla sınırı da olabilir. Adayın yanındaki noktalı şerit tarihleri eskiden yeniye gösterir (● görüldü, ○ görülmedi).<br><br>
-        <b>Arazi şekli analizi:</b> Kaynak olarak “Arazi şekli” seçilirse uydu görüntüsü yerine yükselti verisi taranır (yaklaşık 1,9 km genişlikte alan). Çevresinden yüksek yuvarlak alanları (höyük, tümülüs), çukurları ve merkezi çökmüş tümsekleri arar. Gösterimde “Toprak” seçeneği yüksek (sarı) ve alçak (mor) alanları ayırır. Veri genelde 10–30 m çözünürlüklüdür: yalnızca büyük şekiller görünür, tek bir oda mezar ya da tünel görünmez. Küçük izler için uydu analizini kullanın.<br><br>
-        <b>Haritayı döndürmek:</b> ↻ düğmesi üstten bakışlı döndürülebilir haritayı açar. İki parmakla çevirirsiniz. ⟲ kuzeye döndürür, ⬍ eğimi açıp kapatır. Analiz için 2B düğmesine dönün.<br><br>
-        <b>3B görünüm:</b> Haritanın sağ üstündeki 3B düğmesi seçili uydu görüntüsünü araziye giydirir. İki parmakla yukarı kaydırarak eğersiniz, ⟲ ile kuzeye dönersiniz. Yükselti verisi yaklaşık 30 m çözünürlüklüdür: höyük, vadi ve yamaç gibi büyük şekilleri gösterir, ince duvar ya da hendek göstermez. Anomaliler 3B'de turuncu sütunlarla çıkar. Analiz yalnızca 2B'de çalışır.<br><br>
-        <b>Odak ve aday kartı:</b> Odak kaydırıcısı anomali çıkarken uyduyu karartıp anomalileri öne çıkarır. Haritanın altındaki kartta ‹ › ile adaylar arasında gezinirsiniz. ⤢ düğmesi paneli ve üst şeridi gizleyip haritayı tam ekran yapar.<br><br>
-        <b>OpenStreetMap elemesi:</b> Kayıtlı yol, bina, demiryolu, su hattı, çit ve elektrik hattı üzerindeki izler elenir. Kayıtlı tarihi alanlar (mavi eşkenar dörtgen) ve adaya uzaklıkları gösterilir. Kırsalda OSM eksik olabilir.<br><br>
-        <b>Çözünürlük:</b> Piksel boyutu 0,5 m'den büyükse ince duvar ve hendek izleri görünmez, yalnızca büyük lekeler çıkar. Sentinel-2 (10 m) bu iş için kabadır.<br><br>
-        <b>Radar (SAR):</b> Sentinel-1 gibi C bant radar toprağa santimetrelerce girer, tünel ya da lahit göstermez. Nem ve yüzey pürüzlülüğü değişimini gösterir. Ücretsiz ve anahtarsız açık bir döşeme servisi bulamadım, o yüzden haritaya katman koymadım.<br><br>
-        <b>Hukuk:</b> Kazı, define arama ve buluntu toplamak izne tabidir. Bir ipucu bulursanız fotoğraf ve koordinatla müzeye bildirin; Notlar sekmesindeki rapor bunun için hazırlandı.<br><br>
+        <b>Tümülüs / Çöken Tümülüs:</b> yuvarlak kubbe, ortası çökükse “çöken”.<br>
+        <b>Çöküntü Hattı:</b> zincirleme çukurlar (galeri, tünel çökmesi).<br>
+        <b>Çöküntü:</b> tek çukur. <b>Yükselti:</b> yuvarlak olmayan tümsek.<br>
+        <b>Oda Mezar İzi:</b> kare/dikdörtgen leke. <b>Lahit / Gömü:</b> küçük kompakt leke.<br>
+        <b>Tünel Hattı / Hendek Hattı:</b> uzun düz iz (bitki zayıfsa tünel, canlıysa hendek).<br>
+        <b>Bitki İzi / Toprak İzi:</b> ton farkı (crop / soil mark).<br>
+        <b>Tarla Sınırı? · Sulama Deseni? · Koyu İz (gölge?):</b> büyük olasılıkla modern ya da doğal.<br><br>
+        Skor büyükse iz güçlü. Güven en fazla “orta”. Yön: K–G, KD–GB, D–B, KB–GD.<br>
+        Yükselti verisi 10–30 m çözünürlüklü: yalnızca büyük şekiller. Radar toprağın altını göstermez.<br><br>
+        <b>Hukuk:</b> Kazı ve define arama izne tabidir; ipucunu fotoğraf ve koordinatla müzeye bildirin.<br><br>
         <b>Dışarıda aç:</b> <a id="lApple" href="#" target="_blank" rel="noopener">Apple Haritalar</a> · <a id="lGoogle" href="#" target="_blank" rel="noopener">Google Haritalar</a> · <a id="lSar" href="#" target="_blank" rel="noopener">Copernicus (SAR)</a>
       </p>
     </div>
@@ -566,14 +564,14 @@ const CORE=(()=>{
     return {flat:false,dem:true,w,h,R:Math.round(r2/2),nms:Math.max(8,Math.round(120/mpp)),zE,zL,coh,nrg,theta,As,S,crater};
   }
 
-  /* (x,y) noktasından eşik üstü bağlı lekenin boyutu: uzun/kısa eksen (metre) */
-  function blobStats(S,w,h,x,y,level,mpp){
-    const seen=new Uint8Array(w*h),st=[y*w+x];seen[y*w+x]=1;
-    let n=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,capped=false;
+  /* (x,y) noktasından eşik üstü bağlı leke: uzun/kısa eksen (m), yönelim (0-180, kuzeyden), dikdörtgenlik */
+  function blobStats(S,w,h,x,y,level,mpp,owner,oid){
+    const seen=new Uint8Array(w*h),st=[y*w+x],pts=[];seen[y*w+x]=1;
+    let sx=0,sy=0,sxx=0,syy=0,sxy=0,capped=false;
     while(st.length){
       const i=st.pop(),px=i%w,py=(i/w)|0;
-      n++;sx+=px;sy+=py;sxx+=px*px;syy+=py*py;sxy+=px*py;
-      if(n>60000){capped=true;break}
+      pts.push(i);sx+=px;sy+=py;sxx+=px*px;syy+=py*py;sxy+=px*py;
+      if(pts.length>60000){capped=true;break}
       for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
         const nx=px+dx,ny=py+dy;
         if(nx<0||ny<0||nx>=w||ny>=h)continue;
@@ -581,13 +579,57 @@ const CORE=(()=>{
         if(!seen[j]&&S[j]>=level){seen[j]=1;st.push(j)}
       }
     }
-    const mx=sx/n,my=sy/n,cxx=sxx/n-mx*mx+1/12,cyy=syy/n-my*my+1/12,cxy=sxy/n-mx*my;
+    if(owner)for(let k=0;k<pts.length;k++)owner[pts[k]]=oid;
+    const n=pts.length,mx=sx/n,my=sy/n,cxx=sxx/n-mx*mx+1/12,cyy=syy/n-my*my+1/12,cxy=sxy/n-mx*my;
     const tr=cxx+cyy,dt=Math.sqrt(Math.max(0,(cxx-cyy)*(cxx-cyy)/4+cxy*cxy));
     const l1=tr/2+dt,l2=Math.max(tr/2-dt,1/12);
-    return {n,area:n*mpp*mpp,L:4*Math.sqrt(l1)*mpp,W:4*Math.sqrt(l2)*mpp,capped};
+    const ang=0.5*Math.atan2(2*cxy,cxx-cyy),ux=Math.cos(ang),uy=Math.sin(ang);
+    let t0=1e9,t1=-1e9,s0=1e9,s1=-1e9;
+    for(let k=0;k<n;k++){
+      const i=pts[k],dx=(i%w)-mx,dy=((i/w)|0)-my,t=dx*ux+dy*uy,q=-dx*uy+dy*ux;
+      if(t<t0)t0=t;if(t>t1)t1=t;if(q<s0)s0=q;if(q>s1)s1=q;
+    }
+    const e1=t1-t0+1,e2=s1-s0+1;
+    const bear=(((Math.atan2(ux,-uy)*180/Math.PI)%180)+180)%180;
+    return {n,area:n*mpp*mpp,L:4*Math.sqrt(l1)*mpp,W:4*Math.sqrt(l2)*mpp,capped,rect:capped?0:n/(e1*e2),bear};
   }
 
-  return {boxBlur,blobStats,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
+  /* Aynı işaretli küçük adaylardan doğrusal, düzenli aralıklı zincirleri (çöküntü hattı) bulur */
+  function findChains(cands,mpp){
+    const minG=Math.max(2,10/mpp),maxG=60/mpp,tol=Math.max(1.3,2.5/mpp),out=[];
+    const sign=c=>(c.dem||Math.abs(c.zL)>Math.abs(c.zE))?Math.sign(c.zL):Math.sign(c.zE);
+    for(const sg of [-1,1]){
+      let pool=[];cands.forEach((c,i)=>{if(sign(c)===sg)pool.push(i)});
+      for(;;){
+        let best=null;
+        for(let a=0;a<pool.length;a++)for(let b=a+1;b<pool.length;b++){
+          const pa=cands[pool[a]],pb=cands[pool[b]],dx=pb.x-pa.x,dy=pb.y-pa.y,d=Math.hypot(dx,dy);
+          if(d<minG||d>maxG)continue;
+          const ux=dx/d,uy=dy/d,mem=[];
+          for(const k of pool){
+            const c=cands[k],px=c.x-pa.x,py=c.y-pa.y;
+            if(Math.abs(-px*uy+py*ux)<=tol)mem.push({k,t:px*ux+py*uy});
+          }
+          if(mem.length<3)continue;
+          mem.sort((p,q)=>p.t-q.t);
+          const gaps=[];for(let i=1;i<mem.length;i++)gaps.push(mem[i].t-mem[i-1].t);
+          const sg2=gaps.slice().sort((p,q)=>p-q),med=sg2[sg2.length>>1];
+          if(Math.min(...gaps)<minG||Math.max(...gaps)>maxG||Math.max(...gaps)>2.2*med)continue;
+          let sumS=0;for(const m of mem)sumS+=cands[m.k].S;
+          const score=mem.length*1000+sumS;
+          if(!best||score>best.score)best={mem,score,ux,uy,med};
+        }
+        if(!best)break;
+        const bear=(((Math.atan2(best.ux,-best.uy)*180/Math.PI)%180)+180)%180;
+        out.push({idx:best.mem.map(m=>m.k),bearing:bear,spacing:best.med*mpp,len:(best.mem[best.mem.length-1].t-best.mem[0].t)*mpp,n:best.mem.length});
+        const used=new Set(best.mem.map(m=>m.k));
+        pool=pool.filter(k=>!used.has(k));
+      }
+    }
+    return out;
+  }
+
+  return {boxBlur,blobStats,findChains,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
 })();
 /*CORE-END*/
 </script>
@@ -1265,7 +1307,7 @@ async function osmForRegion(z,x0,y0,cw,ch,mpp){
   if(osm.error){siteLayer.clearLayers();return {osm:null,mask:null,note:'OSM verisi alınamadı ('+osm.error+'), eleme yapılmadı.'}}
   showSites(osm.sites);
   const {mask,covered}=buildMask(osm,z,x0,y0,cw,ch,mpp);
-  return {osm,mask,note:'OSM: '+osm.ways.length+' hat/bina elendi (alanın %'+Math.round(covered*100)+'), '+osm.sites.length+' kayıtlı tarihi nokta.'};
+  return {osm,mask,note:'OSM: '+osm.ways.length+' hat elendi · '+osm.sites.length+' kayıtlı alan'};
 }
 
 async function runAnalysis(){
@@ -1318,7 +1360,7 @@ async function runDem(){
     const mpp=156543.03392*Math.cos(map.getCenter().lat*Math.PI/180)/Math.pow(2,zd);
     const o=await osmForRegion(zd,x0,y0,cw,ch,mpp);
     last={mode:'single',dem:true,sides:[],z:zd,x0,y0,cw,ch,mpp,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],elev:el,
-      note:(o.note?o.note+'\n':'')+'Yükselti '+Math.round(mn)+'–'+Math.round(mx)+' m. Veri çözünürlüğü genelde 10–30 m: yalnızca büyük şekiller (höyük, tümülüs, çöküntü) aranır.'};
+      note:(o.note?o.note+'\n':'')+'Yükselti '+Math.round(mn)+'–'+Math.round(mx)+' m · veri 10–30 m çözünürlüklü'};
     recomputeDem();
   }catch(e){setMsg('Arazi analizi başarısız: '+e.message)}
   finally{btn.disabled=false}
@@ -1333,7 +1375,7 @@ function recomputeDem(){
 $('bPreset').onclick=()=>{
   $('aMode').value='combined';$('aThr').value='1.8';$('aThr').dispatchEvent(new Event('input'));
   $('aOsm').checked=true;
-  setMsg('Hassas tarama ayarlandı. Eşik düştüğü için yanlış alarm artar; adayları mutlaka birden çok tarihle ve yerinde doğrulayın.');
+  setMsg('Hassas ayar: eşik 1.8, OSM açık. Yanlış alarm artar.');
 };
 
 function compute(){
@@ -1447,31 +1489,31 @@ function describe(c){
 const DIRS=['K–G','KD–GB','D–B','KB–GD'];
 
 /* Net yorum: kural tabanlı tahmin (kesin bilgi değildir) */
-function verdict(c,st,seenRatio,spanM){
+function verdict(c,st,seenRatio,spanM,chain){
   const L=st.L,W=Math.max(st.W,0.01),el=L/W;
-  let name,why,flag='';
-  if(!c.dem&&(st.capped||(L>=0.6*spanM&&el>=6))){name='TARLA SINIRI / YOL / BORU HATTI OLABİLİR';why='bölgeyi baştan sona kesen düz çizgi'}
+  let name;
+  const vegDom=Math.abs(c.zE)>=Math.abs(c.zL);
+  if(chain)name='Çöküntü Hattı';
   else if(c.dem){
-    if(c.zL>0&&c.crater){name='TÜMÜLÜS / ODA MEZAR ÇÖKMESİ';why='ortası çökmüş yüksek alan'}
-    else if(c.zL>0){name='HÖYÜK / TÜMSEK';why='çevresinden yüksek, yuvarlak'}
-    else if(el>=3&&L>=60){name='HENDEK / TÜNEL ÇÖKME HATTI';why='uzun çukur çizgisi'}
-    else{name='ÇÖKÜNTÜ / ÇÖKMÜŞ ODA';why='yuvarlak çukur'}
-  }else if(el>=3.5&&L>=12){
-    if(c.zE>0&&Math.abs(c.zE)>=Math.abs(c.zL)){name='HENDEK / DOLGU HATTI';why='uzun çizgi, bitki canlı (eski kanal, boru ya da hendek de olabilir)'}
-    else{name='TÜNEL / GİZLİ GEÇİŞ HATTI';why='uzun düz iz, üstte bitki/toprak farkı'}
-  }else if(L<7&&st.area<40){
-    name='LAHİT / SANDIK / GÖMÜ NOKTASI';why=(c.zL>0&&Math.abs(c.zL)>Math.abs(c.zE))?'küçük açık renkli leke (taş ya da harç olabilir)':'küçük kompakt leke'
-  }else if(L<30){
-    if(Math.abs(c.zE)>=Math.abs(c.zL)&&c.zE<0){name='ODA MEZAR / YAPI TEMELİ';why='orta boy leke, bitki zayıf'}
-    else if(c.zE>0&&Math.abs(c.zE)>=Math.abs(c.zL)){name='ÇUKUR / KAZI DOLGUSU';why='orta boy leke, bitki canlı'}
-    else{name='TOPRAK DEĞİŞİMİ';why='orta boy toprak ton farkı'}
-  }else if(L>=60&&el<2){name='SULAMA / EKİN DESENİ OLABİLİR';why='çok geniş yuvarlak alan'}
-  else{name='TOPRAK DEĞİŞİMİ';why='geniş toprak ton farkı'}
-  if(!c.dem&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6)flag='⚠ gölge olabilir';
+    if(c.zL>0&&c.crater)name='Çöken Tümülüs';
+    else if(c.zL>0)name=(el<1.6&&L>=20&&L<=200)?'Tümülüs':'Yükselti';
+    else name=(el>=3&&L>=60)?'Çöküntü Hattı':'Çöküntü';
+  }
+  else if(st.capped||(L>=0.6*spanM&&el>=6))name='Tarla Sınırı?';
+  else if(el>=3.5&&L>=12)name=(vegDom&&c.zE>0)?'Hendek Hattı':'Tünel Hattı';
+  else if(L<7&&st.area<40)name='Lahit / Gömü';
+  else if(L<30){
+    if(st.rect>=0.85&&el<3&&L>=2.5)name='Oda Mezar İzi';
+    else if(vegDom)name=c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)';
+    else name=c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)';
+  }
+  else if(L>=60&&el<2)name='Sulama Deseni?';
+  else name=vegDom?(c.zE<0?'Bitki İzi (zayıf)':'Bitki İzi (canlı)'):(c.zL>0?'Toprak İzi (açık)':'Toprak İzi (koyu)');
+  if(!c.dem&&!chain&&c.zL<0&&Math.abs(c.zE)<0.4*Math.abs(c.zL)&&st.area>6&&!/\?$/.test(name)&&!/Hat/.test(name))name='Koyu İz (gölge?)';
   let conf='düşük';
-  if(seenRatio!=null&&seenRatio>=0.6&&!flag&&!/OLABİLİR/.test(name))conf='orta';
-  const size=L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm';
-  return {name,why,conf,size,flag};
+  if(seenRatio!=null&&seenRatio>=0.6&&!/\?\)?$/.test(name))conf='orta';
+  const size=chain?Math.round(st.L)+' m · '+chain.n+' çukur':(L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm');
+  return {name,conf,size,round:!chain&&el<1.6,bear:chain?chain.bearing:st.bear};
 }
 
 // Çok tarihli modda adayın özelliklerini en güçlü tarihin analizinden okur
@@ -1573,44 +1615,53 @@ function showResult(){
 
   candLayer.clearLayers();
   const list=$('candList');list.innerHTML='';
-  const cands=CORE.pickCandidates(res,mpp,thr,10);
-  if(last.mode==='multi')enrichMulti(cands,thr);
+  const raw=CORE.pickCandidates(res,mpp,thr,80);
+  const owner=new Int32Array(res.w*res.h),pool=[];
+  for(const c of raw){
+    if(owner[c.y*res.w+c.x]>0)continue;            // aynı lekenin parçası: tekrar sayma
+    c.st=CORE.blobStats(res.S,res.w,res.h,c.x,c.y,Math.max(thr*0.6,c.S*0.5),mpp,owner,pool.length+1);
+    pool.push(c);
+    if(pool.length>=24)break;
+  }
+  if(last.mode==='multi')enrichMulti(pool,thr);
+  const cc=pool.map((c,i)=>({i,c})).filter(o=>last.dem?(o.c.zL<0&&o.c.st.L<150):(o.c.st.L<12&&!o.c.st.capped));
+  const chains=CORE.findChains(cc.map(o=>o.c),mpp).map(ch=>Object.assign({},ch,{idx:ch.idx.map(j=>cc[j].i)}));
+  const inChain=new Set();chains.forEach(ch=>ch.idx.forEach(i=>inChain.add(i)));
+  let entries=[];
+  chains.forEach(ch=>{
+    const mem=ch.idx.map(i=>pool[i]);
+    const base=mem.reduce((a,b)=>b.S>a.S?b:a,mem[0]);
+    entries.push({c:base,st:{L:ch.len,W:1,area:0,rect:0,bear:ch.bearing,capped:false},chain:ch,mem});
+  });
+  pool.forEach((c,i)=>{if(!inChain.has(i))entries.push({c,st:c.st})});
+  entries.sort((a,b)=>b.c.S-a.c.S);entries=entries.slice(0,10);
   lastCands=[];candData=[];
-  cands.forEach((c,k)=>{
+  entries.forEach((en,k)=>{
+    const c=en.c,st=en.st;
     const ll=map.unproject([x0+c.x+0.5,y0+c.y+0.5],z);
-    const bear=CORE.bearing(c.theta);
-    const dir=DIRS[Math.round(bear/45)%4];
-    const st=CORE.blobStats(res.S,res.w,res.h,c.x,c.y,Math.max(thr*0.6,c.S*0.5),mpp);
-    const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp);
-    let txt='Aday '+(k+1)+' · '+V.name+' · güven '+V.conf+' · '+V.size+' · skor '+c.S.toFixed(1)+' · '+V.why+(V.flag?' · '+V.flag:'')+(c.coh>0.45&&!c.dem?' · '+dir+' doğrultusu':'');
+    const V=verdict(c,st,last.mode==='multi'?c.seen/c.N:null,Math.min(res.w,res.h)*mpp,en.chain);
+    const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
+    const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
     let dots='';
-    if(last.mode==='multi'){
-      dots=c.per.map(v=>v>=thr*0.8?'●':'○').join('');
-      txt+=' · '+c.seen+'/'+c.N+' tarihte görüldü · en güçlü '+last.dates[c.best].date;
-    }
+    if(last.mode==='multi')dots=c.per.map(v=>v>=thr*0.8?'●':'○').join('');
     let near=null;
-    for(const st of last.siteList||[]){const d=ll.distanceTo([st.lat,st.lon]);if(!near||d<near.d)near={d,s:st}}
-    if(near&&near.d<200)txt+=' · kayıtlı alan yakınında: '+(near.s.name||near.s.kind)+' ('+Math.round(near.d)+' m)';
+    for(const sx of last.siteList||[]){const d=ll.distanceTo([sx.lat,sx.lon]);if(!near||d<near.d)near={d,s:sx}}
+    const nearTxt=(near&&near.d<200)?'kayıtlı alan: '+(near.s.name||near.s.kind)+' '+Math.round(near.d)+' m':'';
+    const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'');
+    const txt=head+' · '+sub+(nearTxt?' · '+nearTxt:'');
     let thumb=null;
     try{
       const src=last.dem?null:(last.mode==='multi'?last.dates[c.best].raw:last.raw[last.sides[0]]);
       if(src)thumb=makeThumb(src,c.x,c.y);
     }catch(e){}
     const meta=(last.dem?'Arazi şekli (yükselti)':last.mode==='multi'?'Çok tarihli, '+last.dates.length+' tarih':'Tek tarih')+' · eşik '+thr.toFixed(1)+' · '+mpp.toFixed(2)+' m/piksel';
-    lastCands.push({lat:ll.lat,lon:ll.lng,text:txt+(dots?' · '+dots:''),name:V.name+(V.flag?' '+V.flag:''),conf:V.conf,size:V.size,why:V.why,thumb,meta});
-
-    const kind=c.dem?(c.zL>0?(c.crater?'çöken tümsek':'tümsek'):'çöküntü'):Math.abs(c.zE)>=Math.abs(c.zL)?(c.zE<0?'bitki zayıf':'bitki canlı'):(c.zL>0?'zemin açık':'zemin koyu');
-    const short=(k+1)+'/'+cands.length+' · '+V.name+(V.flag?' '+V.flag:'')+' · güven '+V.conf+' · '+V.size+
-      (last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'')+(near&&near.d<200?' · kayıtlı alan '+Math.round(near.d)+' m':'');
+    lastCands.push({lat:ll.lat,lon:ll.lng,text:txt+(dots?' · '+dots:''),name:V.name,conf:V.conf,size:V.size,why:head,thumb,meta});
+    const short=(k+1)+'/'+entries.length+' · skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(last.mode==='multi'?' · '+c.seen+'/'+c.N:'')+(nearTxt?' · '+Math.round(near.d)+' m kayıtlı alan':'');
 
     const mk=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="cand">'+(k+1)+'</div>',iconSize:[24,24],iconAnchor:[12,12]})});
     const box=document.createElement('div');box.className='popup';
-    const p=document.createElement('p');p.textContent=txt;box.appendChild(p);
-    if(dots){
-      const dd=document.createElement('p');
-      dd.textContent=last.dates[0].date.slice(0,7)+'  '+dots+'  '+last.dates[last.dates.length-1].date.slice(0,7);
-      box.appendChild(dd);
-    }
+    const p=document.createElement('p');p.textContent=head;p.style.fontWeight='700';box.appendChild(p);
+    const p2=document.createElement('p');p2.textContent=sub+(dots?'  '+dots:'')+(nearTxt?'\n'+nearTxt:'');box.appendChild(p2);
     if(thumb){const im=document.createElement('img');im.className='th';im.src=thumb;box.appendChild(im)}
     const sm=document.createElement('small');sm.textContent=ll.lat.toFixed(5)+', '+ll.lng.toFixed(5);box.appendChild(sm);
     if(last.mode==='multi'){
@@ -1627,18 +1678,22 @@ function showResult(){
     mk.bindPopup(box);
     mk.on('click',()=>selectCand(k,false));
     candLayer.addLayer(mk);
-    candData.push({ll,txt,short,mk,c,V,thumb,meta});
+    if(en.chain){
+      const pts=en.mem.slice().sort((a,b)=>a.x-b.x||a.y-b.y).map(m=>map.unproject([x0+m.x+0.5,y0+m.y+0.5],z));
+      candLayer.addLayer(L.polyline(pts,{color:'#ffb347',weight:3,dashArray:'5 6',interactive:false}));
+      pts.forEach(q=>candLayer.addLayer(L.circleMarker(q,{radius:5,color:'#fff',weight:2,fillColor:'#f0883a',fillOpacity:1,interactive:false})));
+    }
+    candData.push({ll,txt,short,mk,c,V,thumb,meta,head});
     const bt=document.createElement('button');
-    bt.innerHTML='<b>#'+(k+1)+' '+esc(V.name)+'</b> · güven '+V.conf+' · '+V.size+'<br><span style="color:#8b9aa8">skor '+c.S.toFixed(1)+' · '+esc(V.why)+'</span>'+(dots?'<br><span style="color:#8b9aa8">'+c.seen+'/'+c.N+' tarih '+dots+'</span>':'')+
-      (near&&near.d<200?'<br><span style="color:#6cc3ea">kayıtlı alan: '+esc(near.s.name||near.s.kind)+' ('+Math.round(near.d)+' m)</span>':'');
+    bt.innerHTML='<b>'+esc(head)+'</b><br><span style="color:#8b9aa8">'+esc(sub)+(dots?' '+dots:'')+'</span>'+(nearTxt?'<br><span style="color:#6cc3ea">'+esc(nearTxt)+'</span>':'');
     bt.onclick=()=>{selectCand(k,true);if(!is3d)mk.openPopup()};
     list.appendChild(bt);
   });
-  let s='Yorumlar kural tabanlı tahmindir, kesin değildir. Yerinde doğrulayın.\nAlan ≈ '+Math.round(cw*mpp)+' × '+Math.round(ch*mpp)+' m · '+mpp.toFixed(2)+' m/piksel · z'+z+' · '+cands.length+' aday';
-  if(last.mode==='multi')s+='\n'+last.dates.length+' farklı tarih: '+last.dates[0].date+' … '+last.dates[last.dates.length-1].date;
+  let s=entries.length+' aday · '+Math.round(cw*mpp)+'×'+Math.round(ch*mpp)+' m · '+mpp.toFixed(2)+' m/piksel · z'+z;
+  if(last.mode==='multi')s+=' · '+last.dates.length+' tarih';
   if(last.note)s+='\n'+last.note;
-  if(mpp>0.8&&!last.dem)s+='\nPiksel boyutu 0,8 m’den büyük: ince duvar ve hendek izleri görünmez, yalnızca büyük lekeler çıkar.';
-  if(!cands.length)s+='\nEşiği düşürmeyi ya da başka bir yer/tarih denemeyi deneyin.';
+  if(mpp>0.8&&!last.dem)s+='\nÇözünürlük düşük: yalnızca büyük izler.';
+  if(!entries.length)s+='\nAday yok: eşiği düşürün.';
   $('aRes').textContent=s;
   selIdx=-1;
   if(candData.length)selectCand(0,false);else{$('cc').hidden=true;$('stage').classList.remove('hascc')}
@@ -1889,7 +1944,7 @@ async function runProbe(){
       l.options.maxNativeZoom=lim;l.redraw();capZoom();
     }
     if(z<Math.min(19,inf.nz)&&side==='A'){
-      setMsg('Bu bölgede '+SIDE_NAME[side]+' katmanında en fazla '+z+'. seviye gerçek görüntü var. Daha fazla yakınlaşma boş gri döşeme gösterirdi, sınırladım. “Katmanlar → En net görüntüyü bul” eski tarihlere bakar.');
+      setMsg('Bu bölgede en fazla z'+z+' gerçek görüntü var, yakınlaşma sınırlandı. “En net görüntüyü bul”u deneyin.');
     }
   }
 }
@@ -2088,7 +2143,7 @@ $('bSaveC').onclick=()=>{
   candData.forEach(d=>{
     const dup=P.cands.some(c=>L.latLng(c.lat,c.lon).distanceTo(d.ll)<8);
     if(dup)return;
-    P.cands.push({id:Date.now()+''+Math.floor(Math.random()*1e5),lat:d.ll.lat,lon:d.ll.lng,name:d.V.name+(d.V.flag?' '+d.V.flag:''),conf:d.V.conf,size:d.V.size,why:d.V.why,
+    P.cands.push({id:Date.now()+''+Math.floor(Math.random()*1e5),lat:d.ll.lat,lon:d.ll.lng,name:d.V.name,conf:d.V.conf,size:d.V.size,why:d.head,
       text:d.txt,meta:d.meta,thumb:d.thumb,status:'yeni',t:Date.now()});
     n++;
   });

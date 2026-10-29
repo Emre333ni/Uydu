@@ -15,10 +15,12 @@
   --bg:#0a0e13;--panel:#10171e;--panel2:#151f28;--line:#243241;--txt:#e9eef2;--dim:#8b9aa8;
   --gok:#6cc3ea;--gok2:#2b6d91;--ice:#dfeaf1;--ember:#f0883a;--ok:#6fcf97;--warn:#f5c04a;--bad:#f2766b
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;min-width:0}
+html{touch-action:manipulation;-webkit-text-size-adjust:100%;width:100%}
+input,select,textarea{font-size:16px!important;max-width:100%}
 [hidden]{display:none!important}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px/1.35 -apple-system,system-ui,sans-serif;overflow:hidden;overscroll-behavior:none}
-#app{display:flex;flex-direction:column;height:100%;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#app{display:flex;flex-direction:column;width:100%;max-width:100vw;overflow:hidden;height:100%;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
 /* Marka şeridi */
 #brand{display:flex;align-items:center;gap:8px;padding:4px 10px;border-bottom:1px solid var(--line);
@@ -27,12 +29,12 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px/1
     linear-gradient(225deg,transparent 75%,rgba(108,195,234,.06) 75%) 0 0/14px 14px,
     linear-gradient(180deg,#121b24,#0d141b)}
 #brand b{font-size:15px;font-weight:800;letter-spacing:.22em;color:var(--ice)}
-#brand em{font-style:normal;font-size:11px;color:var(--dim);margin-left:auto;letter-spacing:.04em}
+#brand em{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:normal;font-size:11px;color:var(--dim);margin-left:auto;letter-spacing:.04em}
 #brand svg{display:block;filter:drop-shadow(0 0 6px rgba(240,136,58,.25))}
 
 #top{display:flex;gap:6px;padding:6px 10px}
 #top input{flex:1;min-width:0;font-size:16px;padding:9px 10px;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:10px}
-button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+button{max-width:100%;font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
 button:active{filter:brightness(1.4)}
 button:disabled{opacity:.5}
 .pri{background:linear-gradient(180deg,#2f7ba3,#1d516f);border-color:var(--gok);font-weight:700;color:#fff}
@@ -51,10 +53,10 @@ button:disabled{opacity:.5}
 /* Panel ve sekmeler */
 #panel{background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column;max-height:44vh}
 #tabs{display:flex;border-bottom:1px solid var(--line);flex:none}
-#tabs button{flex:1;border:0;border-radius:0;background:transparent;padding:10px 4px;font-size:13px;color:var(--dim);border-bottom:2px solid transparent}
+#tabs button{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:0;border-radius:0;background:transparent;padding:10px 2px;font-size:12.5px;color:var(--dim);border-bottom:2px solid transparent}
 #tabs button.on{color:var(--ice);border-bottom-color:var(--ember);background:rgba(240,136,58,.06)}
 .sec{padding:10px;overflow:auto;-webkit-overflow-scrolling:touch}
-.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 label{display:flex;flex-direction:column;font-size:11px;color:var(--dim);gap:3px}
 select{font-size:15px;padding:7px;background:#0b1117;color:var(--txt);border:1px solid var(--line);border-radius:8px;width:100%}
 .dateRow{display:flex;gap:4px;margin-top:4px}
@@ -69,8 +71,8 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 .chk{flex-direction:row;align-items:center;color:var(--txt);font-size:13px;gap:5px}
 .btns{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
 #bPreset,#bAnalyze{flex:1 1 100%!important}
-.btns button{flex:1 1 40%;font-size:13px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.btns button{flex:1 1 40%;font-size:13px;white-space:normal}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-bottom:8px}
 .val{color:var(--ice);font-variant-numeric:tabular-nums}
 #aRes{font-size:12px;color:var(--dim);margin:6px 0;white-space:pre-line}
 #candList,#noteList{display:flex;flex-direction:column;gap:6px}

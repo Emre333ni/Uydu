@@ -2310,7 +2310,7 @@ async function runValidate(){
     const sites=knownSites.slice().sort((a,b)=>cen.distanceTo([a.lat,a.lon])-cen.distanceTo([b.lat,b.lon])).slice(0,8);
     const thr=+$('aThr').value,bg=+$('aBg').value,z=18,cw=640,ch=640;
     const tpl=(layer.A&&info.A&&info.A.img)?info.A:{url:LAYERS.esri.url,subs:'abc'};
-    const rows=[];const st1={n:0,aS:0,mS:0,aC:0,mC:0,cnt:0,area:0},st2={n:0,s:0,c:0};
+    const rows=[];const demStore=[];const st1={n:0,aS:0,mS:0,aC:0,mC:0,cnt:0,area:0},st2={n:0,s:0,c:0};
     for(let k=0;k<sites.length;k++){
       const st=sites[k];
       setMsg('Doğrulama '+(k+1)+'/'+sites.length+': '+(st.name||'alan'));
@@ -2333,7 +2333,7 @@ async function runValidate(){
       // Arazi şekli (yükseklik) ile: höyük gibi geniş kabarıklıklar için
       let demTxt='';
       try{
-        const res2={};
+        const res2={},store={};
         for(const kind of ['site','ctrl']){
           const ll=kind==='site'?[st.lat,st.lon]:[st.lat,st.lon+0.009];
           const zd=15,dw=512,dh=512,c=map.project(L.latLng(ll[0],ll[1]),zd);
@@ -2342,6 +2342,7 @@ async function runValidate(){
           const d=g.data.data,el=new Float32Array(dw*dh);
           for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;
           const mpd=156543.03392*Math.cos(ll[0]*Math.PI/180)/Math.pow(2,zd);
+          store[kind]={el,dw,dh,mpd};
           const r=CORE.analyzeDem(el,dw,dh,mpd,{bgMeters:60});
           if(r.flat){res2[kind]=false;continue}
           const cs=CORE.pickCandidates(r,mpd,thr,40).filter(q=>q.zL>0).slice(0,4);
@@ -2349,6 +2350,7 @@ async function runValidate(){
           res2[kind]=best<=150;
         }
         st2.n++;if(res2.site)st2.s++;if(res2.ctrl)st2.c++;
+        if(store.site&&store.ctrl)demStore.push(store);
         demTxt=res2.site?' · yükselti ✓':' · yükselti ✗';
       }catch(e){}
       if(out.err||!out.site||!out.ctrl){rows.push('– '+(st.name||'alan')+': '+(out.err||'veri yok')+demTxt);continue}
@@ -2356,8 +2358,23 @@ async function runValidate(){
       rows.push((out.site.a?'✓ ':'✗ ')+(st.name||'alan')+(out.site.m?' · höyük şekli':'')+demTxt);
     }
     if(!st1.n){$('aRes').textContent='Doğrulama için yeterli görüntü alınamadı.\n'+rows.join('\n');setMsg('');return}
+    // Yükseklik modunda arka plan ölçeği taraması (hangi ayar bilinen alanı rastgeleden en iyi ayırıyor)
+    const sweep=[];
+    for(const bgm of [30,100,150]){
+      let hs=0,hc=0;
+      for(const st of demStore){
+        for(const kind of ['site','ctrl']){
+          const q=st[kind],r=CORE.analyzeDem(q.el,q.dw,q.dh,q.mpd,{bgMeters:bgm});
+          if(r.flat)continue;
+          const cs=CORE.pickCandidates(r,q.mpd,thr,40).filter(o=>o.zL>0).slice(0,4);
+          let best=1e9;for(const o of cs){const t=Math.hypot(o.x-q.dw/2,o.y-q.dh/2)*q.mpd;if(t<best)best=t}
+          if(best<=150){if(kind==='site')hs++;else hc++}
+        }
+      }
+      sweep.push('arka plan '+bgm+' m: '+hs+'/'+demStore.length+' · rastgele '+hc+'/'+demStore.length);
+    }
     const fa=st1.cnt/st1.area;
-    $('aRes').textContent='Bilinen alan: '+st1.aS+'/'+st1.n+' iz · rastgele yer: '+st1.aC+'/'+st1.n+' iz\nHöyük şekli: bilinen '+st1.mS+'/'+st1.n+' · rastgele '+st1.mC+'/'+st1.n+'\nYükseklik (höyük kabarıklığı): bilinen '+st2.s+'/'+st2.n+' · rastgele '+st2.c+'/'+st2.n+'\nYanlış alarm: '+fa.toFixed(0)+' aday/km²\n'+rows.join('\n')+'\nBilinen alan, rastgeleden belirgin yüksekse araç işe yarıyor demektir.';
+    $('aRes').textContent='Bilinen alan: '+st1.aS+'/'+st1.n+' iz · rastgele yer: '+st1.aC+'/'+st1.n+' iz\nHöyük şekli: bilinen '+st1.mS+'/'+st1.n+' · rastgele '+st1.mC+'/'+st1.n+'\nYükseklik (höyük kabarıklığı): bilinen '+st2.s+'/'+st2.n+' · rastgele '+st2.c+'/'+st2.n+'\n'+sweep.join('\n')+'\nYanlış alarm: '+fa.toFixed(0)+' aday/km²\n'+rows.join('\n')+'\nBilinen alan, rastgeleden belirgin yüksekse araç işe yarıyor demektir.';
     setMsg('');
   }catch(e){setMsg('Doğrulama başarısız: '+e.message)}
   finally{btn.disabled=false}

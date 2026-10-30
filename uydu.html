@@ -539,6 +539,51 @@ const CORE=(()=>{
     return out;
   }
 
+  /* Yükseklikten höyük sınırı: merkeze yakın en belirgin kabarıklığı bulur, yarı yükseklikte sınırlar, elips uydurur.
+     el: yükseklik (m), mpd: m/piksel, cx,cy: aranan nokta (piksel), maxR: arama yarıçapı (m) */
+  function moundOutline(el,w,h,mpd,cx,cy,maxR){
+    const r1=Math.max(1,Math.round(15/mpd)),r2=Math.max(r1*3,Math.round(250/mpd));
+    const sm=boxBlur(el,w,h,r1),bg=boxBlur(el,w,h,r2),rel=new Float32Array(w*h);
+    for(let i=0;i<rel.length;i++)rel[i]=sm[i]-bg[i];
+    const R=Math.round(maxR/mpd);let bi=-1,bv=-1e9;
+    for(let y=Math.max(0,cy-R);y<=Math.min(h-1,cy+R);y++)for(let x=Math.max(0,cx-R);x<=Math.min(w-1,cx+R);x++){
+      if((x-cx)*(x-cx)+(y-cy)*(y-cy)>R*R)continue;
+      const v=rel[y*w+x];if(v>bv){bv=v;bi=y*w+x}
+    }
+    if(bi<0||bv<0.8)return {found:false,peak:Math.max(0,bv)};
+    const thr=bv*0.5,seen=new Uint8Array(w*h),q=[bi],pts=[];seen[bi]=1;
+    const lim=Math.round(350/mpd),sx=bi%w,sy=(bi/w)|0;
+    while(q.length){
+      const i=q.pop(),x=i%w,y=(i/w)|0;pts.push(i);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=w||ny>=h)continue;
+        const j=ny*w+nx;if(seen[j]||rel[j]<thr)continue;
+        if((nx-sx)*(nx-sx)+(ny-sy)*(ny-sy)>lim*lim)continue;
+        seen[j]=1;q.push(j);
+      }
+    }
+    // Ağırlıklı merkez (yükseklik farkına göre), sonra 48 ışınla alt-piksel sınır
+    let mx=0,my=0,ws=0;for(const i of pts){const wv=rel[i]-thr+1e-3;mx+=(i%w)*wv;my+=((i/w)|0)*wv;ws+=wv}mx/=ws;my/=ws;
+    const bil=(x,y)=>{x=Math.min(w-1.001,Math.max(0,x));y=Math.min(h-1.001,Math.max(0,y));const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=y0*w+x0;
+      return rel[i]*(1-fx)*(1-fy)+rel[i+1]*fx*(1-fy)+rel[i+w]*(1-fx)*fy+rel[i+w+1]*fx*fy};
+    const poly=[],NR=48,step=0.25,maxS=Math.round(350/mpd)*4;
+    for(let k=0;k<NR;k++){
+      const t=k/NR*2*Math.PI,ux=Math.cos(t),uy=Math.sin(t);
+      let prev=bil(mx,my),d=0,hit=null;
+      for(let s2=1;s2<=maxS;s2++){
+        d=s2*step;const v=bil(mx+ux*d,my+uy*d);
+        if(v<thr){const f=(prev-thr)/Math.max(prev-v,1e-9);hit=d-step+f*step;break}
+        prev=v;
+      }
+      if(hit==null)hit=maxS*step;
+      poly.push([mx+ux*hit,my+uy*hit]);
+    }
+    // Hafif yumuşatma (komşu ışınların ortalaması)
+    const sp=poly.map((p,k)=>{const a=poly[(k+NR-1)%NR],c=poly[(k+1)%NR];return [(a[0]+2*p[0]+c[0])/4,(a[1]+2*p[1]+c[1])/4]});
+    let minD=1e9,maxD=0;for(let k=0;k<NR/2;k++){const a=sp[k],c=sp[k+NR/2],dd=Math.hypot(a[0]-c[0],a[1]-c[1]);if(dd<minD)minD=dd;if(dd>maxD)maxD=dd}
+    return {found:true,peak:bv,x:mx,y:my,poly:sp,a:maxD/2,b:minD/2,n:pts.length};
+  }
+
   function applyMask(S,mask){
     if(!mask)return S;
     const o=new Float32Array(S);
@@ -743,7 +788,7 @@ const CORE=(()=>{
     return n?c/n:0;
   }
 
-  return {boxBlur,snowFrac,blobStats,findChains,findMounds,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
+  return {boxBlur,snowFrac,blobStats,findChains,findMounds,moundOutline,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
 })();
 /*CORE-END*/
 </script>
@@ -2387,54 +2432,6 @@ async function runValidate(){
   finally{btn.disabled=false}
 }
 $('bVal').onclick=runValidate;
-
-/* ---------- Yükseklik doğrulaması: daha çok bilinen alan, her biri için 3 rastgele kontrol ---------- */
-async function runValidate2(){
-  const btn=$('bVal2');btn.disabled=true;
-  try{
-    const c0=map.getCenter();
-    setMsg('Bilinen alanlar aranıyor (60 km)…');
-    const q='SELECT ?item ?itemLabel ?c WHERE { SERVICE wikibase:around { ?item wdt:P625 ?c . bd:serviceParam wikibase:center "Point('+c0.lng.toFixed(5)+' '+c0.lat.toFixed(5)+')"^^geo:wktLiteral . bd:serviceParam wikibase:radius "60" . } ?item wdt:P31/wdt:P279* wd:Q839954 . SERVICE wikibase:label { bd:serviceParam wikibase:language "tr,en". } } LIMIT 120';
-    const r=await fetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}});
-    if(!r.ok)throw new Error('http '+r.status);
-    const j=await r.json(),sites=[];
-    for(const b of j.results.bindings){const m=(b.c.value||'').match(/Point\(([-\d.]+) ([-\d.]+)\)/);if(m)sites.push({lat:+m[2],lon:+m[1],name:b.itemLabel?b.itemLabel.value:'alan'})}
-    if(sites.length<3){setMsg('60 km içinde yeterli kayıtlı alan yok ('+sites.length+').');return}
-    const list=sites.slice(0,40),thr=+$('aThr').value,offs=[[0,0.009],[0.007,-0.009],[-0.008,0.002]];
-    const bgs=[30,60,100,150],S={},C={};bgs.forEach(b=>{S[b]=0;C[b]=0});let n=0,cn=0;
-    const demAt=async(lat,lon)=>{
-      const zd=15,dw=512,dh=512,c=map.project(L.latLng(lat,lon),zd);
-      const g=await grabTiles(DEM_URL,null,zd,Math.round(c.x-dw/2),Math.round(c.y-dh/2),dw,dh);
-      if(g.error)return null;
-      const d=g.data.data,el=new Float32Array(dw*dh);
-      for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;
-      return {el,dw,dh,mpd:156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,zd)};
-    };
-    const hitAt=(q,bgm)=>{
-      const r=CORE.analyzeDem(q.el,q.dw,q.dh,q.mpd,{bgMeters:bgm});
-      if(r.flat)return false;
-      const cs=CORE.pickCandidates(r,q.mpd,thr,40).filter(o=>o.zL>0).slice(0,4);
-      let best=1e9;for(const o of cs){const t=Math.hypot(o.x-q.dw/2,o.y-q.dh/2)*q.mpd;if(t<best)best=t}
-      return best<=150;
-    };
-    for(let k=0;k<list.length;k++){
-      const st=list[k];
-      setMsg('Yükseklik doğrulaması '+(k+1)+'/'+list.length);
-      await sleep(10);
-      const a=await demAt(st.lat,st.lon);if(!a)continue;
-      n++;bgs.forEach(b=>{if(hitAt(a,b))S[b]++});
-      for(const o of offs){
-        const q2=await demAt(st.lat+o[0],st.lon+o[1]);if(!q2)continue;
-        cn++;bgs.forEach(b=>{if(hitAt(q2,b))C[b]++});
-      }
-    }
-    const lines=bgs.map(b=>'arka plan '+b+' m: bilinen '+S[b]+'/'+n+' (%'+Math.round(100*S[b]/Math.max(1,n))+') · rastgele '+C[b]+'/'+cn+' (%'+Math.round(100*C[b]/Math.max(1,cn))+')');
-    $('aRes').textContent='Yükseklik doğrulaması ('+n+' bilinen alan, '+cn+' rastgele yer, eşik '+thr.toFixed(1)+')\n'+lines.join('\n')+'\nBilinen yüzdesi rastgeleden belirgin yüksekse yükseklik modu işe yarıyor.';
-    setMsg('');
-  }catch(e){setMsg('Doğrulama başarısız: '+e.message)}
-  finally{btn.disabled=false}
-}
-$('bVal2').onclick=runValidate2;
 
 /* ---------- Ölçüm aracı ---------- */
 let msrOn=false,msrPts=[];

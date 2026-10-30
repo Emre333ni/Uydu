@@ -343,6 +343,8 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <b>Tarla Sınırı? · Sulama Deseni? · Koyu İz (gölge?):</b> büyük olasılıkla modern ya da doğal.<br><br>
         Skor büyükse iz güçlü. Güven en fazla “orta”. Yön: K–G, KD–GB, D–B, KB–GD.<br>
         Yükselti verisi 10–30 m çözünürlüklü: yalnızca büyük şekiller. Radar toprağın altını göstermez.<br><br>
+        <button id="bSelf" style="width:100%;margin:2px 0 6px">Sistem testi (internet, uydu, GPS, pusula)</button>
+        <div id="selfRes" style="white-space:pre-line;font-size:12px;margin-bottom:8px"></div>
         <b>Hukuk:</b> Kazı ve define arama izne tabidir; ipucunu fotoğraf ve koordinatla müzeye bildirin.<br><br>
         <b>Dışarıda aç:</b> <a id="lApple" href="#" target="_blank" rel="noopener">Apple Haritalar</a> · <a id="lGoogle" href="#" target="_blank" rel="noopener">Google Haritalar</a> · <a id="lSar" href="#" target="_blank" rel="noopener">Copernicus (SAR)</a>
       </p>
@@ -2432,6 +2434,49 @@ async function runValidate(){
   finally{btn.disabled=false}
 }
 $('bVal').onclick=runValidate;
+
+/* ---------- Sistem testi: gerçek ağ ve cihaz özellikleri (telefonda) ---------- */
+async function runSelfTest(){
+  const btn=$('bSelf'),out=$('selfRes');btn.disabled=true;out.textContent='Test ediliyor…';
+  const c=map.getCenter(),lines=[];let ok=0,tot=0;
+  const timed=async(name,fn,note)=>{
+    tot++;const t0=performance.now();
+    try{
+      const r=await Promise.race([fn(),new Promise((_,rej)=>setTimeout(()=>rej(new Error('zaman aşımı')),15000))]);
+      const ms=Math.round(performance.now()-t0);
+      if(r===false||r===null||r===undefined)throw new Error('boş yanıt');
+      ok++;lines.push('✓ '+name+' · '+ms+' ms'+(typeof r==='string'?' · '+r:''));
+    }catch(e){lines.push('✗ '+name+' · '+(e.message||'hata')+(note?' ('+note+')':''))}
+    out.textContent=lines.join('\n')+'\n…';
+  };
+  const img=(tpl,z,subs)=>async()=>{const t=tileOf(c.lat,c.lng,z);const im=await loadImg(tplUrl(tpl,z,t.x,t.y,subs));return im?'görüntü alındı':null};
+  const get=(url,opt,check)=>async()=>{const r=await fetch(url,opt);if(!r.ok)throw new Error('http '+r.status);const j=check?await check(r):true;return j};
+  await timed('Esri uydu (z16)',img(LAYERS.esri.url,16));
+  await timed('Esri uydu gerçek detay (z18 var mı)',async()=>{const r=await tileReal(LAYERS.esri.url,'abc',18,c);if(r===null)throw new Error('alınamadı');return r?'z18 görüntü var':'z18 yok (boş döşeme)'});
+  await timed('Esri Clarity (z16)',img(LAYERS.clarity.url,16));
+  await timed('Sentinel-2 (EOX, z12)',img(LAYERS.s2.url,12));
+  await timed('Arazi gölgesi (z12)',img('https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',12));
+  await timed('Yükseklik verisi (z15)',img(DEM_URL,15));
+  await timed('Wayback tarih listesi',get(WB_CFG,{},async r=>{const j=await r.json();const n=Array.isArray(j)?j.length:Object.keys(j).length;return n+' tarih'}));
+  await timed('Wayback görüntüsü',async()=>{if(!wbItems.length)throw new Error('liste yok');const it=wbItems[0];const t=tileOf(c.lat,c.lng,16);const im=await loadImg(tplUrl(it.url,16,t.x,t.y,'abc'));return im?it.date:null});
+  await timed('Overpass (yol/bina)',get('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent('[out:json][timeout:10];node(39.8,37.5,39.801,37.501);out count;')},async r=>{await r.json();return true}));
+  await timed('Wikidata (bilinen alanlar)',get('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent('ASK{}'),{headers:{Accept:'application/sparql-results+json'}},async r=>{const j=await r.json();return j.boolean===true}));
+  await timed('Open-Meteo (yağış/kar)',get('https://archive-api.open-meteo.com/v1/archive?latitude='+c.lat.toFixed(2)+'&longitude='+c.lng.toFixed(2)+'&start_date=2024-01-01&end_date=2024-01-03&daily=precipitation_sum&timezone=UTC',{},async r=>{const j=await r.json();return j.daily&&j.daily.time.length>0}));
+  await timed('Yer arama (Nominatim)',get('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=Sivas',{},async r=>{const j=await r.json();return j.length>0}));
+  await timed('3B kütüphanesi (MapLibre)',async()=>{await fetch(ML_JS,{mode:'no-cors'});return true},'3B açılmayabilir');
+  // Cihaz özellikleri (ağ gerektirmez)
+  const dev=(name,v,note)=>{tot++;if(v){ok++;lines.push('✓ '+name)}else lines.push('✗ '+name+(note?' ('+note+')':''))};
+  dev('İnternet bağlı',navigator.onLine!==false);
+  dev('Önbellek (çevrimdışı döşeme)',typeof caches!=='undefined','Safari özel gezinmede kapalı olabilir');
+  dev('Konum (GPS) desteği',!!navigator.geolocation);
+  dev('Pusula/hareket sensörü',typeof DeviceOrientationEvent!=='undefined','');
+  let ls=false;try{localStorage.setItem('__t','1');ls=localStorage.getItem('__t')==='1';localStorage.removeItem('__t')}catch(e){}
+  dev('Proje kaydı (yerel depolama)',ls,'özel gezinmede kayıt çalışmaz');
+  dev('Sayfa çevrimdışı (service worker)','serviceWorker' in navigator,'sw.js yüklü olmalı');
+  out.textContent='Sonuç: '+ok+'/'+tot+' çalışıyor\n'+lines.join('\n')+'\nGPS ve pusula izni ilk kullanımda sorulur; burada sadece destek ölçülür.';
+  btn.disabled=false;
+}
+$('bSelf').onclick=runSelfTest;
 
 /* ---------- Ölçüm aracı ---------- */
 let msrOn=false,msrPts=[];

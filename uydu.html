@@ -1667,7 +1667,8 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   let conf='düşük';
   if(seenRatio!=null&&seenRatio>=0.6&&!/\?\)?$/.test(name))conf='orta';
   if(c.oriC!=null&&!chain&&!c.mound&&st.L/W>=2&&c.oriC<0.5)conf='düşük';
-  const size=chain?Math.round(st.L)+' m · '+chain.n+' çukur':(L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm');
+  const wide=!chain&&(st.capped||L>0.6*spanM);
+  const size=wide?'geniş alan':chain?Math.round(st.L)+' m · '+chain.n+' çukur':(L>=1?Math.round(L)+'×'+Math.max(1,Math.round(W))+' m':Math.round(L*100)+'×'+Math.max(1,Math.round(W*100))+' cm');
   return {name,conf,size,round:!chain&&el<1.6,bear:chain?chain.bearing:st.bear};
 }
 

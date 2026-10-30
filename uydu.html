@@ -1043,6 +1043,21 @@ $('cLab').onchange=e=>{e.target.checked?labels.addTo(map):map.removeLayer(labels
 
 /* ---------- Wayback tarih listesi ---------- */
 const OVP_HOSTS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+async function ovpFetch(host,q,ms){
+  let err=null;
+  for(const mode of ['POST','GET']){
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),ms);
+    try{
+      const r=mode==='POST'
+        ?await fetch(host,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ctl.signal})
+        :await fetch(host+'?data='+encodeURIComponent(q),{signal:ctl.signal});
+      if(!r.ok)throw new Error('http '+r.status);
+      return await r.json();
+    }catch(e){err=new Error(mode+': '+(e.name==='AbortError'?'zaman aşımı':(e.message||'hata')))}
+    finally{clearTimeout(t)}
+  }
+  throw err;
+}
 const WB_CFG='https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json';
 const WB_FALLBACK='https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{N}/{level}/{row}/{col}';
 fetch(WB_CFG).then(r=>{if(!r.ok)throw new Error('http '+r.status);return r.json()}).then(cfg=>{
@@ -1408,18 +1423,10 @@ async function fetchOSM(b){
     'way["highway"]('+bb+');way["railway"]('+bb+');way["waterway"]('+bb+');way["barrier"]('+bb+');'+
     'way["power"~"^(line|minor_line)$"]('+bb+');way["building"]('+bb+');'+
     ');out geom;(nwr["historic"]('+bb+');nwr["tomb"]('+bb+'););out center tags;';
-  let to=null;
   try{
     let j=null,lastErr=null;
     for(const host of OVP_HOSTS){
-      const ctl=new AbortController();to=setTimeout(()=>ctl.abort(),10000);
-      try{
-        const r=await fetch(host,{method:'POST',body:'data='+encodeURIComponent(q),
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ctl.signal});
-        if(!r.ok)throw new Error('http '+r.status);
-        j=await r.json();break;
-      }catch(e){lastErr=e}
-      finally{clearTimeout(to)}
+      try{j=await ovpFetch(host,q,9000);break}catch(e){lastErr=e}
     }
     if(!j)throw lastErr||new Error('ağ');
     const ways=[],sites=[];
@@ -1432,7 +1439,6 @@ async function fetchOSM(b){
     }
     return {ways,sites};
   }catch(e){return {error:e.name==='AbortError'?'zaman aşımı':e.message}}
-  finally{clearTimeout(to)}
 }
 
 function buildMask(osm,z,x0,y0,cw,ch,mpp){
@@ -2468,12 +2474,10 @@ async function runSelfTest(){
   await timed('Wayback tarih listesi',get(WB_CFG,{},async r=>{const j=await r.json();const n=Array.isArray(j)?j.length:Object.keys(j).length;return n+' tarih'}));
   await timed('Wayback görüntüsü',async()=>{if(!wbItems.length)throw new Error('liste yok');const it=wbItems[0];const t=tileOf(c.lat,c.lng,16);const im=await loadImg(tplUrl(it.url,16,t.x,t.y,'abc'));return im?it.date:null});
   await timed('Overpass (yol/bina)',async()=>{
-    const tryH=async h=>{const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),9000);
-      try{const r=await fetch(h,{method:'POST',body:'data='+encodeURIComponent('[out:json][timeout:8];node(39.8,37.5,39.801,37.501);out count;'),signal:ctl.signal});
-        if(!r.ok)throw new Error('http '+r.status);await r.json();return true}finally{clearTimeout(t)}};
+    const tryH=async h=>{await ovpFetch(h,'[out:json][timeout:8];node(39.8,37.5,39.801,37.501);out count;',8000);return true};
     const res=await Promise.allSettled(OVP_HOSTS.map(tryH));
     const n=res.filter(x=>x.status==='fulfilled').length;
-    lines.push('   sunucular: '+res.map((x,m)=>OVP_HOSTS[m].split('/')[2]+(x.status==='fulfilled'?' ✓':' ✗')).join(' · '));
+    lines.push('   sunucular: '+res.map((x,m)=>OVP_HOSTS[m].split('/')[2]+(x.status==='fulfilled'?' ✓':' ✗ '+(x.reason&&x.reason.message||''))).join('\n   '));
     if(!n)throw new Error('hiçbiri cevap vermedi');return n+' sunucu açık'},'OSM elemesi yapılamaz');
   await timed('Wikidata (bilinen alanlar)',get('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent('ASK{}'),{headers:{Accept:'application/sparql-results+json'}},async r=>{const j=await r.json();return j.boolean===true}));
   await timed('Open-Meteo (yağış/kar)',get('https://archive-api.open-meteo.com/v1/archive?latitude='+c.lat.toFixed(2)+'&longitude='+c.lng.toFixed(2)+'&start_date=2024-01-01&end_date=2024-01-03&daily=precipitation_sum&timezone=UTC',{},async r=>{const j=await r.json();return j.daily&&j.daily.time.length>0}));

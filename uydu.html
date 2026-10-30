@@ -2310,34 +2310,33 @@ async function runValidate(){
     const sites=knownSites.slice().sort((a,b)=>cen.distanceTo([a.lat,a.lon])-cen.distanceTo([b.lat,b.lon])).slice(0,8);
     const thr=+$('aThr').value,bg=+$('aBg').value,z=18,cw=640,ch=640;
     const tpl=(layer.A&&info.A&&info.A.img)?info.A:{url:LAYERS.esri.url,subs:'abc'};
-    const rows=[];let hit=0,tested=0,ctrlC=0,ctrlN=0;
+    const rows=[];const st1={n:0,aS:0,mS:0,aC:0,mC:0,cnt:0,area:0};
     for(let k=0;k<sites.length;k++){
       const st=sites[k];
       setMsg('Doğrulama '+(k+1)+'/'+sites.length+': '+(st.name||'alan'));
       await sleep(20);
+      const out={};
       for(const kind of ['site','ctrl']){
         const ll=kind==='site'?[st.lat,st.lon]:[st.lat,st.lon+0.009];     // kontrol: ~700 m doğu
         const c=map.project(L.latLng(ll[0],ll[1]),z);
         const x0=Math.round(c.x-cw/2),y0=Math.round(c.y-ch/2);
         const g=await grabTiles(tpl.url,tpl.subs,z,x0,y0,cw,ch);
-        if(g.error){if(kind==='site')rows.push('– '+(st.name||'alan')+': görüntü yok');break}
+        if(g.error){out.err='görüntü yok';break}
         const mpp=156543.03392*Math.cos(ll[0]*Math.PI/180)/Math.pow(2,z);
         const res=CORE.analyze(g.data.data,cw,ch,mpp,{bgMeters:bg,mounds:true});
-        if(res.flat){if(kind==='site')rows.push('– '+(st.name||'alan')+': düz görüntü');break}
-        const cands=CORE.pickCandidates(res,mpp,thr,40);
+        if(res.flat){out.err='düz görüntü';break}
+        const cands=CORE.pickCandidates(res,mpp,thr*1.5,40);
         const mnd=(res.mounds||[]).filter(m=>m.S>=Math.max(5,thr*1.5));
-        if(kind==='site'){
-          let best=1e9;
-          for(const q of cands.concat(mnd)){const d=Math.hypot(q.x-cw/2,q.y-ch/2)*mpp;if(d<best)best=d}
-          const ok=best<=60;tested++;if(ok)hit++;
-          rows.push((ok?'✓ ':'✗ ')+(st.name||'alan')+(ok?' · '+Math.round(best)+' m':' · bulunamadı'));
-        }else{
-          ctrlC+=cands.length+mnd.length;ctrlN+=(cw*mpp*ch*mpp)/1e6;
-        }
+        const near=a=>{let d=1e9;for(const q of a){const t=Math.hypot(q.x-cw/2,q.y-ch/2)*mpp;if(t<d)d=t}return d};
+        out[kind]={a:near(cands.concat(mnd))<=60,m:near(mnd)<=60,n:cands.length+mnd.length,area:(cw*mpp*ch*mpp)/1e6};
       }
+      if(out.err||!out.site||!out.ctrl){rows.push('– '+(st.name||'alan')+': '+(out.err||'veri yok'));continue}
+      st1.n++;st1.aS+=out.site.a?1:0;st1.mS+=out.site.m?1:0;st1.aC+=out.ctrl.a?1:0;st1.mC+=out.ctrl.m?1:0;st1.cnt+=out.ctrl.n;st1.area+=out.ctrl.area;
+      rows.push((out.site.a?'✓ ':'✗ ')+(st.name||'alan')+(out.site.m?' · höyük şekli':''));
     }
-    const fa=ctrlN>0?(ctrlC/ctrlN):0;
-    $('aRes').textContent='Doğrulama: '+hit+'/'+tested+' bilinen alanda iz bulundu · kontrol alanlarında '+fa.toFixed(0)+' aday/km²\n'+rows.join('\n')+'\nNot: bilinen alan yüzeyde görünür olmayabilir; oran en iyi ihtimalle kaba bir ölçüdür.';
+    if(!st1.n){$('aRes').textContent='Doğrulama için yeterli görüntü alınamadı.\n'+rows.join('\n');setMsg('');return}
+    const fa=st1.cnt/st1.area;
+    $('aRes').textContent='Bilinen alan: '+st1.aS+'/'+st1.n+' iz · rastgele yer: '+st1.aC+'/'+st1.n+' iz\nHöyük şekli: bilinen '+st1.mS+'/'+st1.n+' · rastgele '+st1.mC+'/'+st1.n+'\nYanlış alarm: '+fa.toFixed(0)+' aday/km²\n'+rows.join('\n')+'\nBilinen alan, rastgeleden belirgin yüksekse araç işe yarıyor demektir.';
     setMsg('');
   }catch(e){setMsg('Doğrulama başarısız: '+e.message)}
   finally{btn.disabled=false}

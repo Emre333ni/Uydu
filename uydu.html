@@ -135,6 +135,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 #dlg textarea{width:100%;font-size:16px;padding:8px;margin:8px 0;background:#0b1117;color:var(--txt);border:1px solid var(--line);border-radius:8px}
 #dlg input[type=file]{font-size:14px;color:var(--dim);margin-bottom:8px;width:100%}
 .pin{width:16px;height:16px;border-radius:50%;background:var(--warn);border:2px solid #fff;box-shadow:0 0 4px #000}
+.scn{background:rgba(108,195,234,.95)!important}
 .cand{width:24px;height:24px;border-radius:50%;background:rgba(240,136,58,.95);border:2px solid #fff;color:#1a0f05;font:800 12px/20px -apple-system,sans-serif;text-align:center;box-shadow:0 0 5px #000}
 .site{width:12px;height:12px;background:var(--gok);border:2px solid #fff;transform:rotate(45deg);box-shadow:0 0 4px #000}
 .leaflet-container{font:inherit;background:#05090e}
@@ -147,6 +148,31 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 </style>
 </head>
 <body>
+<div id="gate" style="position:fixed;inset:0;z-index:2147483647;background:#0e1620;display:none;align-items:center;justify-content:center;padding:16px">
+  <form id="gateF" style="width:100%;max-width:320px;display:grid;gap:10px;font-family:-apple-system,system-ui,sans-serif;color:#e8eef4">
+    <b style="font-size:20px">Bozkurt Uydu</b>
+    <input id="gateP" type="password" autocomplete="current-password" placeholder="Şifre" style="padding:12px;border-radius:10px;border:1px solid #38485a;background:#16212d;color:#fff">
+    <button type="submit" style="padding:12px;border-radius:10px;border:0;background:#6cc3ea;color:#06121c;font-weight:700">Gir</button>
+    <span id="gateM" style="font-size:13px;color:#ff8a80;min-height:16px"></span>
+  </form>
+</div>
+<script>
+(function(){
+  const H="c5c4d1efbfe49e159ccbd132a5aff34a77df96f3ce85fb25fe0067027eacd0e5",K='uydu-giris',g=document.getElementById('gate');
+  let ok=false;try{ok=localStorage.getItem(K)===H}catch(e){}
+  if(ok)return;
+  g.style.display='flex';
+  const hex=async t=>{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')};
+  document.getElementById('gateF').onsubmit=async e=>{
+    e.preventDefault();
+    const v=document.getElementById('gateP').value.trim().toLowerCase();
+    let h='';try{h=await hex('bozkurt-uydu|'+v)}catch(x){document.getElementById('gateM').textContent='Tarayıcı şifre denetimini desteklemiyor';return}
+    if(h===H){try{localStorage.setItem(K,H)}catch(x){}g.style.display='none'}
+    else{document.getElementById('gateM').textContent='Şifre yanlış';document.getElementById('gateP').value=''}
+  };
+})();
+</script>
+
 <div id="splash"><div>
   <div data-wolf="120"></div>
   <h1>BOZKURT</h1>
@@ -307,6 +333,9 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       </div>
       <div id="aRes"></div>
       <div id="candList"></div>
+      <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
+      <div id="scanRes" style="white-space:pre-line;font-size:12px"></div>
+      <div id="scanList"></div>
       <p class="hint">Ön eleme aracıdır, tespit değil. Yerinde doğrulayın.</p>
     </div>
 
@@ -793,6 +822,38 @@ const CORE=(()=>{
   return {boxBlur,snowFrac,blobStats,findChains,findMounds,moundOutline,analyze,analyzeDem,applyMask,aggregate,signature,sigDiff,pickCandidates,render,bearing,robustSigma};
 })();
 /*CORE-END*/
+/* Ağır hesap (analyze/analyzeDem) arka plan iş parçacığında: ekran donmaz. Worker açılmazsa aynı kod ana iş parçacığında çalışır. */
+const CW=(()=>{
+  let w=null,broken=false,id=0;const pend=new Map();
+  function init(){
+    if(w||broken)return;
+    try{
+      const txt=Array.from(document.scripts).map(x=>x.textContent).find(t=>t.indexOf('/*CORE-START*/')>=0);
+      const a=txt.indexOf('/*CORE-START*/'),b=txt.indexOf('/*CORE-END*/');
+      const src=txt.slice(a,b)+`
+self.onmessage=e=>{const m=e.data;try{const r=CORE[m.fn].apply(null,m.args);const tr=[],seen=new Set();
+ const add=v=>{if(v&&v.buffer instanceof ArrayBuffer&&v.buffer.byteLength&&!seen.has(v.buffer)){seen.add(v.buffer);tr.push(v.buffer)}};
+ if(r&&typeof r==='object')for(const k in r)add(r[k]);
+ self.postMessage({id:m.id,r:r},tr)}catch(err){self.postMessage({id:m.id,err:String(err&&err.message||err)})}};`;
+      w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+      w.onmessage=e=>{const q=pend.get(e.data.id);if(!q)return;pend.delete(e.data.id);e.data.err?q.rej(new Error(e.data.err)):q.res(e.data.r)};
+      w.onerror=()=>{broken=true;w=null;for(const q of pend.values())q.rej(new Error('worker'));pend.clear()};
+    }catch(e){broken=true;w=null}
+  }
+  async function call(fn,args){
+    init();
+    if(w){
+      try{
+        return await new Promise((res,rej)=>{const k=++id;pend.set(k,{res,rej});
+          try{w.postMessage({id:k,fn,args})}catch(e){pend.delete(k);rej(e)}});
+      }catch(e){if(e.message!=='worker'&&!/clone|Data/i.test(e.message))throw e}
+    }
+    await new Promise(r=>setTimeout(r,0));
+    return CORE[fn].apply(null,args);
+  }
+  return {call,get on(){return !!w&&!broken}};
+})();
+const coreAsync=(fn,args)=>CW.call(fn,args);
 </script>
 <script>
 (()=>{
@@ -1043,9 +1104,10 @@ $('cLab').onchange=e=>{e.target.checked?labels.addTo(map):map.removeLayer(labels
 
 /* ---------- Wayback tarih listesi ---------- */
 const OVP_HOSTS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-async function ovpFetch(host,q,ms){
+let ovpDownUntil=0;
+async function ovpFetch(host,q,ms,fast){
   let err=null;
-  for(const mode of ['POST','GET']){
+  for(const mode of (fast?['POST']:['POST','GET'])){
     const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),ms);
     try{
       const r=mode==='POST'
@@ -1323,13 +1385,42 @@ $('bKml').onclick=()=>{
   download('bozkurt-'+stamp()+'.kml',k,'application/vnd.google-earth.kml+xml');
 };
 
-$('bReport').onclick=()=>{
+// Rapor için aynı noktanın en eski ve en yeni Wayback görüntüsü (öncesi/sonrası)
+async function beforeAfter(lat,lon){
+  const els=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=4&&m<=10});
+  if(els.length<2)return null;
+  const z=17,cw=256,pc=map.project(L.latLng(lat,lon),z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
+  const shot=async it=>{
+    const g=await grabTiles(it.url,null,z,x0,y0,cw,cw);
+    if(g.error)return null;
+    const cv=document.createElement('canvas');cv.width=cv.height=cw;const cx=cv.getContext('2d');
+    cx.putImageData(g.data,0,0);
+    cx.strokeStyle='#ffd23f';cx.lineWidth=2;cx.beginPath();cx.arc(cw/2,cw/2,26,0,6.2832);cx.stroke();
+    return {date:it.date,url:cv.toDataURL('image/jpeg',0.8)};
+  };
+  const old=await shot(els[els.length-1]),cur=await shot(els[0]);
+  return old&&cur?{old,cur}:null;
+}
+let reportWin=null;const baCache=new Map();
+$('bReport').onclick=async()=>{
   const sc=savedActive();
   if(!notes.length&&!lastCands.length&&!sc.length){setMsg('Rapor için en az bir not ya da aday gerekir.');return}
+  // en çok 6 adaya öncesi/sonrası görüntü eklenir (kayıtlı adaylar önce)
+  const baKey=c=>c.lat.toFixed(5)+','+c.lon.toFixed(5);
+  const wantBA=sc.concat(lastCands).filter(c=>!baCache.has(baKey(c))).slice(0,6);
+  if(wantBA.length&&wbItems.length>1){
+    const wk=window.open('about:blank','_blank');
+    reportWin=wk;
+    for(let q=0;q<wantBA.length;q++){
+      setMsg('Rapor hazırlanıyor: öncesi/sonrası görüntü '+(q+1)+'/'+wantBA.length+'…');
+      try{const r=await beforeAfter(wantBA[q].lat,wantBA[q].lon);if(r)baCache.set(baKey(wantBA[q]),r)}catch(e){}
+    }
+    setMsg('');
+  }else reportWin=null;
   const gl=(la,lo)=>'https://www.google.com/maps/@'+la.toFixed(6)+','+lo.toFixed(6)+',19z/data=!3m1!1e3';
   const cand=(c,i,tag)=>'<div class="it"><b>'+tag+' '+(i+1)+': '+esc(c.name||'')+'</b>'+(c.status?' <span class="tg">'+STAT[c.status]+'</span>':'')+'<br>'+
     (c.size?'Boyut: '+esc(c.size)+' · güven: '+esc(c.conf)+'<br>':'')+'Koordinat: '+c.lat.toFixed(6)+', '+(c.lon).toFixed(6)+' · <a href="'+gl(c.lat,c.lon)+'">Haritada aç</a><br>'+
-    esc(c.why||c.text||'')+(c.meta?'<br><small>Yöntem: '+esc(c.meta)+'</small>':'')+(c.thumb?'<br><img class="th" src="'+c.thumb+'">':'')+'</div>';
+    esc(c.why||c.text||'')+(c.cross?'<br><small>'+esc(c.cross).replace(/\n/g,'<br>')+'</small>':'')+(c.meta?'<br><small>Yöntem: '+esc(c.meta)+'</small>':'')+(c.thumb?'<br><img class="th" src="'+c.thumb+'">':'')+(baCache.get(c.lat.toFixed(5)+','+c.lon.toFixed(5))?'<br><small>Öncesi / sonrası (Wayback '+baCache.get(c.lat.toFixed(5)+','+c.lon.toFixed(5)).old.date+' → '+baCache.get(c.lat.toFixed(5)+','+c.lon.toFixed(5)).cur.date+')</small><br><img class="th" src="'+baCache.get(c.lat.toFixed(5)+','+c.lon.toFixed(5)).old.url+'"> <img class="th" src="'+baCache.get(c.lat.toFixed(5)+','+c.lon.toFixed(5)).cur.url+'">':'')+'</div>';
   let h='<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Olası arkeolojik ipucu bildirimi</title>'+
    '<style>body{font:15px/1.5 -apple-system,system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}h1{font-size:22px}h2{font-size:17px;margin-top:26px;border-bottom:1px solid #ccc;padding-bottom:4px}'+
    '.it{margin:12px 0;padding:10px;border:1px solid #ddd;border-radius:8px;break-inside:avoid}img{max-width:100%;border-radius:6px;margin-top:6px}img.th{max-width:260px}small{color:#555}.tg{background:#eee;border-radius:5px;padding:1px 6px;font-size:12px}'+
@@ -1350,7 +1441,9 @@ $('bReport').onclick=()=>{
   }
   h+='<h2>Gönderim</h2><p>Bu bildirim, bölgenizdeki müdürlüğe (Kültür ve Turizm İl Müdürlüğü ya da en yakın müze müdürlüğü) iletilmek üzere hazırlanmıştır.</p></body></html>';
   const url=URL.createObjectURL(new Blob([h],{type:'text/html'}));
-  const w=window.open(url,'_blank');
+  let w=reportWin;
+  if(w){try{w.location.href=url}catch(e){w=null}}
+  else w=window.open(url,'_blank');
   if(!w)download('bozkurt-rapor-'+stamp()+'.html',h,'text/html');
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 };
@@ -1417,20 +1510,65 @@ async function grabTiles(tpl,subs,z,x0,y0,cw,ch){
 }
 
 /* OpenStreetMap: elenecek hatlar ve kayıtlı tarihi alanlar */
-async function fetchOSM(b){
-  const bb=[b.s,b.w,b.n,b.e].map(v=>v.toFixed(6)).join(',');
+/* OSM verisi 0.02° hücreler halinde indirilir ve telefonda saklanır (30 gün): aynı bölge tekrar açılınca internet gerekmez. */
+const OSMC={mem:new Map(),db:null,
+  open(){
+    if(this.db)return this.db;
+    this.db=new Promise(res=>{
+      try{
+        const rq=indexedDB.open('uydu-osm',1);
+        rq.onupgradeneeded=()=>rq.result.createObjectStore('c');
+        rq.onsuccess=()=>res(rq.result);rq.onerror=()=>res(null);rq.onblocked=()=>res(null);
+      }catch(e){res(null)}
+    });
+    return this.db;
+  },
+  async get(k){
+    if(this.mem.has(k))return this.mem.get(k);
+    const db=await this.open();if(!db)return null;
+    return new Promise(res=>{
+      try{
+        const rq=db.transaction('c').objectStore('c').get(k);
+        rq.onsuccess=()=>{const v=rq.result;if(v&&Date.now()-v.t<30*864e5){this.mem.set(k,v);res(v)}else res(null)};
+        rq.onerror=()=>res(null);
+      }catch(e){res(null)}
+    });
+  },
+  async put(k,v){
+    this.mem.set(k,v);
+    const db=await this.open();if(!db)return;
+    try{db.transaction('c','readwrite').objectStore('c').put(v,k)}catch(e){}
+  }};
+const OSM_CELL=0.02;
+async function osmCell(iy,ix){
+  const key=iy+':'+ix,hit=await OSMC.get(key);
+  if(hit)return hit.el;
+  if(Date.now()<ovpDownUntil)throw new Error('OSM sunucuları yanıt vermiyor (atlandı)');
+  const s0=iy*OSM_CELL,w0=ix*OSM_CELL;
+  const bb=[s0,w0,s0+OSM_CELL,w0+OSM_CELL].map(v=>v.toFixed(5)).join(',');
   const q='[out:json][timeout:25];('+
     'way["highway"]('+bb+');way["railway"]('+bb+');way["waterway"]('+bb+');way["barrier"]('+bb+');'+
     'way["power"~"^(line|minor_line)$"]('+bb+');way["building"]('+bb+');'+
     ');out geom;(nwr["historic"]('+bb+');nwr["tomb"]('+bb+'););out center tags;';
+  let j=null;
+  try{j=await Promise.any(OVP_HOSTS.map(h=>ovpFetch(h,q,12000,true)))}
+  catch(e){ovpDownUntil=Date.now()+300000;throw new Error('OSM sunucuları yanıt vermiyor')}
+  const el=j.elements||[];
+  OSMC.put(key,{t:Date.now(),el});
+  return el;
+}
+async function fetchOSM(b){
   try{
-    let j=null,lastErr=null;
-    for(const host of OVP_HOSTS){
-      try{j=await ovpFetch(host,q,9000);break}catch(e){lastErr=e}
-    }
-    if(!j)throw lastErr||new Error('ağ');
-    const ways=[],sites=[];
-    for(const el of j.elements||[]){
+    const iy0=Math.floor(b.s/OSM_CELL),iy1=Math.floor(b.n/OSM_CELL),ix0=Math.floor(b.w/OSM_CELL),ix1=Math.floor(b.e/OSM_CELL);
+    if((iy1-iy0+1)*(ix1-ix0+1)>12)return {error:'alan çok geniş'};
+    const jobs=[];
+    for(let iy=iy0;iy<=iy1;iy++)for(let ix=ix0;ix<=ix1;ix++)jobs.push(osmCell(iy,ix));
+    const rs=await Promise.allSettled(jobs);
+    const bad=rs.filter(r=>r.status==='rejected');
+    if(bad.length)throw new Error(bad[0].reason.message+(bad.length<rs.length?' ('+(rs.length-bad.length)+'/'+rs.length+' bölge alındı, tekrar denenince kalanlar tamamlanır)':''));
+    const ways=[],sites=[],seen=new Set();
+    for(const r of rs)for(const el of r.value){
+      const id=el.type+el.id;if(seen.has(id))continue;seen.add(id);
       const t=el.tags||{};
       if(t.historic||t.tomb){
         const lat=el.lat!=null?el.lat:(el.center&&el.center.lat),lon=el.lon!=null?el.lon:(el.center&&el.center.lon);
@@ -1539,7 +1677,7 @@ async function runAnalysis(){
     const o=await osmForRegion(z,x0,y0,cw,ch,mpp);
     const snowS=CORE.snowFrac(raw[sides[0]].data,cw,ch)>0.35;
     last={mode:'single',snow:snowS,raw,sides,z,x0,y0,cw,ch,mpp,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:o.note};
-    compute();
+    await compute();
   }catch(e){
     setMsg('Analiz başarısız: '+e.message);
   }finally{btn.disabled=false}
@@ -1560,13 +1698,17 @@ async function runDem(){
     const o=await osmForRegion(zd,x0,y0,cw,ch,mpp);
     last={mode:'single',dem:true,sides:[],z:zd,x0,y0,cw,ch,mpp,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],elev:el,
       note:(o.note?o.note+'\n':'')+'Yükselti '+Math.round(mn)+'–'+Math.round(mx)+' m · veri 10–30 m çözünürlüklü'};
-    recomputeDem();
+    await recomputeDem();
   }catch(e){setMsg('Arazi analizi başarısız: '+e.message)}
   finally{btn.disabled=false}
 }
-function recomputeDem(){
+let calcGen=0;
+async function recomputeDem(){
   if(!last||!last.dem)return;
-  const r=CORE.analyzeDem(last.elev,last.cw,last.ch,last.mpp,{bgMeters:+$('aBg').value});
+  const my=++calcGen,L0=last;
+  setMsg('Hesaplanıyor…');
+  const r=await coreAsync('analyzeDem',[last.elev,last.cw,last.ch,last.mpp,{bgMeters:+$('aBg').value}]);
+  if(my!==calcGen||last!==L0)return;
   if(r.flat){setMsg('Bu bölgede yükselti farkı çok az (düz arazi ya da veri yok).');return}
   last.res=Object.assign({},r,{S:CORE.applyMask(r.S,last.mask)});last.R=r.R;
   setMsg('');showResult();
@@ -1577,11 +1719,15 @@ $('bPreset').onclick=()=>{
   setMsg('Hassas ayar: eşik 1.8, OSM açık. Yanlış alarm artar.');
 };
 
-function compute(){
+async function compute(){
   if(!last||last.mode!=='single')return;
   if(last.dem)return recomputeDem();
   const P={bgMeters:+$('aBg').value,mounds:true};
-  const rs=last.sides.map(s=>CORE.analyze(last.raw[s].data,last.cw,last.ch,last.mpp,P));
+  const my=++calcGen,L0=last;
+  setMsg('Hesaplanıyor…');
+  const rs=[];
+  for(const sd of last.sides)rs.push(await coreAsync('analyze',[last.raw[sd].data,last.cw,last.ch,last.mpp,P]));
+  if(my!==calcGen||last!==L0)return;
   if(rs.some(r=>r.flat)){
     setMsg('Görüntü bu bölgede düz ya da boş görünüyor (veri yok olabilir). Detay seviyesini düşürmeyi deneyin.');
     return;
@@ -1660,7 +1806,7 @@ async function runMulti(){
       await sleep(20);
       const g=await grabTiles(chosen[k].url,'abc',z,x0,y0,cw,ch);
       if(g.error)continue;
-      const r=CORE.analyze(g.data.data,cw,ch,mpp,Object.assign({},P,{mounds:true}));
+      const r=await coreAsync('analyze',[g.data.data,cw,ch,mpp,Object.assign({},P,{mounds:true})]);
       if(r.flat)continue;
       R=r.R;
       dates.push({date:chosen[k].date,mounds:r.mounds,raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:chosen[k].dryv,snow:CORE.snowFrac(g.data.data,cw,ch)>0.35});
@@ -1680,7 +1826,7 @@ async function recomputeMulti(){
   await sleep(20);
   const P={bgMeters:+$('aBg').value};
   for(const d of last.dates){
-    const r=CORE.analyze(d.raw.data,last.cw,last.ch,last.mpp,P);
+    const r=await coreAsync('analyze',[d.raw.data,last.cw,last.ch,last.mpp,P]);
     if(r.flat)continue;
     d.S=CORE.applyMask(r.S,last.mask);last.R=r.R;
   }
@@ -1951,8 +2097,10 @@ function showResult(){
       const src=last.dem?null:(last.mode==='multi'?last.dates[c.best].raw:last.raw[last.sides[0]]);
       if(src)thumb=makeThumb(src,c.x,c.y);
     }catch(e){}
-    const meta=(last.dem?'Arazi şekli (yükselti)':last.mode==='multi'?'Çok tarihli, '+last.dates.length+' tarih':'Tek tarih')+' · eşik '+thr.toFixed(1)+' · '+mpp.toFixed(2)+' m/piksel';
-    lastCands.push({lat:ll.lat,lon:ll.lng,text:txt+(dots?' · '+dots:''),name:V.name,conf:V.conf,size:V.size,why:head,thumb,meta});
+    const srcT=last.dem?'Terrarium yükselti (~30 m)':last.mode==='multi'?'Esri Wayback '+last.dates.map(d=>d.date).sort()[0]+' … '+last.dates.map(d=>d.date).sort().slice(-1)[0]:last.sides.map(sd=>layer[sd]&&layer[sd].options.attribution||'?').join(' + ');
+    const meta=(last.dem?'Arazi şekli (yükselti)':last.mode==='multi'?'Çok tarihli, '+last.dates.length+' tarih':'Tek tarih')+' · kaynak: '+srcT+' · analiz '+new Date().toLocaleDateString('tr-TR')+' · eşik '+thr.toFixed(1)+' · '+mpp.toFixed(2)+' m/piksel';
+    const rec={lat:ll.lat,lon:ll.lng,text:txt+(dots?' · '+dots:''),name:V.name,conf:V.conf,size:V.size,why:head,thumb,meta};
+    lastCands.push(rec);
     const short=(k+1)+'/'+entries.length+' · skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(last.mode==='multi'?' · '+c.seen+'/'+c.N:'')+(nearTxt?' · '+Math.round(near.d)+' m kayıtlı alan':'');
 
     const mk=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="cand">'+(k+1)+'</div>',iconSize:[24,24],iconAnchor:[12,12]})});
@@ -1975,6 +2123,7 @@ function showResult(){
     const nb=document.createElement('button');nb.textContent='Nota ekle';
     nb.onclick=()=>{map.closePopup();openNote(ll.lat,ll.lng,txt+'\n')};
     box.appendChild(nb);
+    addCrossBtn(box,ll,rec,mk);
     mk.bindPopup(box);
     mk.on('click',()=>selectCand(k,false));
     candLayer.addLayer(mk);
@@ -2006,6 +2155,7 @@ function clearAnalysis(){
   if(overlay){map.removeLayer(overlay);overlay=null}
   candLayer.clearLayers();siteLayer.clearLayers();
   $('candList').innerHTML='';$('aRes').textContent='';last=null;lastCands=[];
+  scanLayer.clearLayers();$('scanList').innerHTML='';$('scanRes').textContent='';
   candData=[];selIdx=-1;overlayData=null;
   $('cc').hidden=true;$('stage').classList.remove('hascc');
   applyFocus();sync3d();
@@ -2039,7 +2189,7 @@ $('aSrc').addEventListener('change',()=>{
 });
 $('aBg').oninput=e=>{
   $('vBg').textContent=e.target.value+' m';clearTimeout(deb);
-  deb=setTimeout(()=>{if(last&&last.mode==='multi')recomputeMulti();else compute()},300);
+  deb=setTimeout(()=>{(last&&last.mode==='multi'?recomputeMulti():compute()).catch(e=>setMsg('Hesap başarısız: '+e.message))},300);
 };
 
 /* ---------- 3B görünüm (MapLibre, ilk kullanımda yüklenir) ---------- */
@@ -2449,6 +2599,162 @@ async function runValidate(){
 }
 $('bVal').onclick=runValidate;
 
+/* ---------- Bölge tarama (yükselti) ve çapraz kontrol ---------- */
+const scanLayer=L.layerGroup().addTo(map);
+let scanStop=false,scanBusy=false;
+function demElev(img,cw,ch){const d=img.data,el=new Float32Array(cw*ch);for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;return el}
+const mppAt=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z);
+async function runScan(){
+  if(scanBusy)return;
+  if(is3d){setMsg('Tarama için önce 2B görünüme dönün.');return}
+  if(map.getZoom()<11){setMsg('Tarama için en az 11. seviyeye yakınlaşın (görünen alan taranır).');return}
+  const zd=15,CELL=512,STEP=448,thr=+$('aThr').value;
+  const b=map.getBounds(),p0=map.project(b.getNorthWest(),zd),p1=map.project(b.getSouthEast(),zd);
+  const nx=Math.max(1,Math.ceil((p1.x-p0.x-CELL)/STEP)+1),ny=Math.max(1,Math.ceil((p1.y-p0.y-CELL)/STEP)+1);
+  if(nx*ny>64){setMsg('Alan çok geniş ('+nx*ny+' parça). Biraz yakınlaşın (en çok 64 parça, yaklaşık 10×10 km).');return}
+  scanBusy=true;scanStop=false;
+  $('bScan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();$('scanList').innerHTML='';
+  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  const found=[];let done=0,fails=0;
+  const total=nx*ny;
+  try{
+    for(let j=0;j<ny&&!scanStop;j++)for(let i=0;i<nx&&!scanStop;i++){
+      const x0=Math.round(p0.x+i*STEP),y0=Math.round(p0.y+j*STEP);
+      $('scanRes').textContent='Taranıyor '+(done+1)+'/'+total+' · '+found.length+' aday'+(fails?' · '+fails+' parça alınamadı':'');
+      try{
+        const g=await grabTiles(DEM_URL,null,zd,x0,y0,CELL,CELL);
+        if(g.error){fails++;done++;continue}
+        const cl=map.unproject([x0+CELL/2,y0+CELL/2],zd),mpp=mppAt(cl.lat,zd);
+        const r=await coreAsync('analyzeDem',[demElev(g.data,CELL,CELL),CELL,CELL,mpp,{bgMeters:120}]);
+        if(!r.flat){
+          const ents=buildEntries(r,mpp,thr,true,null);
+          for(const en of ents){
+            if(en.c.S<thr)continue;
+            const V=verdict(en.c,en.st,null,CELL*mpp,en.chain,false);
+            const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zd);
+            found.push({lat:ll.lat,lon:ll.lng,S:en.c.S,V,mpp});
+          }
+        }
+      }catch(e){fails++}
+      done++;
+      await sleep(0);
+    }
+  }finally{
+    if(wl)try{wl.release()}catch(e){}
+  }
+  // yinelenenleri ele (taramalar üst üste biniyor)
+  found.sort((a,b)=>b.S-a.S);
+  const kept=[];
+  for(const f of found){
+    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<70))continue;
+    kept.push(f);if(kept.length>=40)break;
+  }
+  scanCands(kept,done,total,fails,thr);
+  if(kept.length)setPanel(false);
+  scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
+}
+function scanCands(kept,done,total,fails,thr){
+  const list=$('scanList');list.innerHTML='';scanLayer.clearLayers();
+  const day=new Date().toLocaleDateString('tr-TR');
+  lastCands=[];
+  kept.forEach((f,k)=>{
+    const V=f.V,dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
+    const head='#'+(k+1)+' skor '+f.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
+    const sub=V.size+' · güven '+V.conf+' · bölge taraması';
+    const meta='Bölge taraması (yükselti) · kaynak: Terrarium yükselti (~30 m) · '+day+' · eşik '+thr.toFixed(1);
+    const o={lat:f.lat,lon:f.lon,text:head+' · '+sub,name:V.name,conf:V.conf,size:V.size,why:head,thumb:null,meta};
+    lastCands.push(o);
+    const ll=L.latLng(f.lat,f.lon);
+    const mk=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="cand scn">'+(k+1)+'</div>',iconSize:[24,24],iconAnchor:[12,12]})});
+    const box=document.createElement('div');box.className='popup';
+    const p=document.createElement('p');p.textContent=head;p.style.fontWeight='700';box.appendChild(p);
+    const p2=document.createElement('p');p2.textContent=sub;box.appendChild(p2);
+    const sm=document.createElement('small');sm.textContent=f.lat.toFixed(5)+', '+f.lon.toFixed(5);box.appendChild(sm);
+    const fb=document.createElement('button');fb.textContent='Tam analiz';
+    fb.onclick=()=>{map.closePopup();map.setView(ll,16,{animate:false});$('aSrc').value='DEM';$('aSrc').dispatchEvent(new Event('change'));runAnalysis()};
+    box.appendChild(fb);
+    addCrossBtn(box,ll,o,mk);
+    const nb=document.createElement('button');nb.textContent='Nota ekle';nb.onclick=()=>{map.closePopup();openNote(f.lat,f.lon,o.text+'\n')};box.appendChild(nb);
+    const shb=document.createElement('button');shb.textContent='Paylaş';shb.onclick=()=>shareLoc(f.lat,f.lon,o.text);box.appendChild(shb);
+    mk.bindPopup(box);scanLayer.addLayer(mk);
+    const bt=document.createElement('button');
+    bt.innerHTML='<b>'+esc(head)+'</b><br><span style="color:#8b9aa8">'+esc(sub)+'</span>';
+    bt.onclick=()=>{map.setView(ll,Math.max(map.getZoom(),16));mk.openPopup()};
+    list.appendChild(bt);
+  });
+  $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+done+'/'+total+' parça tarandı · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
+    '\nYalnızca yükselti ile ön eleme (OSM elemesi yok). Aday seçip "Çapraz kontrol" ve "Tam analiz" yapın.'+(kept.length?'':'\nAday yok: eşiği düşürün ya da başka bölge deneyin.');
+}
+$('bScan').onclick=()=>runScan().catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Tarama başarısız: '+e.message)});
+$('bScanStop').onclick=()=>{scanStop=true};
+
+// Çapraz kontrol: aynı noktayı üç bağımsız kaynakta sınar (yükselti, güncel uydu, geçmiş görüntüler)
+async function crossCheck(lat,lon,thr,say){
+  const ll=L.latLng(lat,lon);
+  const peak=(S,w,h,rad)=>{let m=0;const cx=w>>1,cy=h>>1;
+    for(let y=Math.max(0,cy-rad);y<=Math.min(h-1,cy+rad);y++)for(let x=Math.max(0,cx-rad);x<=Math.min(w-1,cx+rad);x++){
+      if((x-cx)*(x-cx)+(y-cy)*(y-cy)>rad*rad)continue;const v=S[y*w+x];if(v>m)m=v}
+    return m};
+  const rows=[];let n=0,avail=0;
+  // 1) yükselti
+  try{
+    say('Yükselti kontrol ediliyor…');
+    const zd=15,cw=384,pc=map.project(ll,zd),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,zd);
+    const g=await grabTiles(DEM_URL,null,zd,x0,y0,cw,cw);
+    if(g.error)throw new Error(g.error);
+    const r=await coreAsync('analyzeDem',[demElev(g.data,cw,cw),cw,cw,mpp,{bgMeters:120}]);
+    const m=r.flat?0:peak(r.S,cw,cw,Math.max(4,Math.round(45/mpp)));
+    avail++;if(m>=thr){n++;rows.push('yükselti ✓ '+m.toFixed(1))}else rows.push('yükselti ✗ '+m.toFixed(1));
+  }catch(e){rows.push('yükselti alınamadı')}
+  // 2) güncel uydu + 3) geçmiş görüntüler
+  let z=18;
+  try{
+    say('Uydu görüntüsü kontrol ediliyor…');
+    const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});
+    if(t===null)throw new Error('ağ');
+    if(!t)z=17;
+    const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,z),rad=Math.max(4,Math.round(12/mpp));
+    const P={bgMeters:Math.min(60,+$('aBg').value||60)};
+    const g=await grabTiles(LAYERS.esri.url,'abc',z,x0,y0,cw,cw);
+    if(g.error)throw new Error(g.error);
+    const r=await coreAsync('analyze',[g.data.data,cw,cw,mpp,P]);
+    const m=r.flat?0:peak(r.S,cw,cw,rad);
+    avail++;if(m>=thr){n++;rows.push('güncel görüntü ✓ '+m.toFixed(1))}else rows.push('güncel görüntü ✗ '+m.toFixed(1));
+    // geçmiş
+    const el=wbItems.filter(d=>{const mo=+d.date.slice(5,7);return mo>=4&&mo<=10});
+    const pick=[];const K=Math.min(5,el.length);
+    for(let q=0;q<K;q++)pick.push(el[Math.floor(q*(el.length-1)/Math.max(1,K-1))]);
+    let ok=0,got=0;
+    for(const it of pick){
+      say('Geçmiş görüntü '+(got+1)+'/'+pick.length+'…');
+      try{
+        const gg=await grabTiles(it.url,null,z,x0,y0,cw,cw);
+        if(gg.error)continue;
+        const rr=await coreAsync('analyze',[gg.data.data,cw,cw,mpp,P]);
+        got++;if(!rr.flat&&peak(rr.S,cw,cw,rad)>=thr*0.8)ok++;
+      }catch(e){}
+    }
+    if(got>=3){avail++;const good=ok/got>=0.6;if(good)n++;rows.push('geçmiş görüntüler '+ok+'/'+got+(good?' ✓':' ✗'))}
+    else rows.push('geçmiş görüntü yetersiz ('+got+')');
+  }catch(e){rows.push('görüntü kontrolü alınamadı')}
+  const conf=avail<2?'belirsiz':n>=3?'yüksek':n===2?'orta':'düşük';
+  return {n,avail,conf,txt:'Çapraz kontrol: '+rows.join(' · ')+'\n'+n+'/'+avail+' kaynakta var · tutarlılık: '+conf+'\n(Bağımsız kaynakların uyumudur; gerçek isabet oranı değildir.)'};
+}
+function addCrossBtn(box,ll,rec,mk){
+  const out=document.createElement('p');out.style.whiteSpace='pre-line';out.style.fontSize='12px';
+  const b=document.createElement('button');b.textContent='Çapraz kontrol';
+  b.onclick=async()=>{
+    b.disabled=true;
+    const say=t=>{out.textContent=t;if(mk&&mk.getPopup())mk.getPopup().update()};
+    try{
+      const r=await crossCheck(ll.lat,ll.lng,Math.max(2,+$('aThr').value),say);
+      say(r.txt);if(rec){rec.cross=r.txt;rec.text=(rec.text||'').split('\nÇapraz')[0]+'\n'+r.txt}
+    }catch(e){say('Kontrol başarısız: '+e.message)}
+    b.disabled=false;
+  };
+  box.appendChild(b);box.appendChild(out);
+}
+
 /* ---------- Sistem testi: gerçek ağ ve cihaz özellikleri (telefonda) ---------- */
 async function runSelfTest(){
   const btn=$('bSelf'),out=$('selfRes');btn.disabled=true;out.textContent='Test ediliyor…';
@@ -2486,6 +2792,8 @@ async function runSelfTest(){
   // Cihaz özellikleri (ağ gerektirmez)
   const dev=(name,v,note)=>{tot++;if(v){ok++;lines.push('✓ '+name)}else lines.push('✗ '+name+(note?' ('+note+')':''))};
   dev('İnternet bağlı',navigator.onLine!==false);
+  dev('Arka plan hesabı (Worker)',typeof Worker!=='undefined','kapalıysa analiz yine çalışır, daha yavaş');
+  dev('OSM kayıt alanı (IndexedDB)',typeof indexedDB!=='undefined','kapalıysa OSM her seferinde indirilir');
   dev('Önbellek (çevrimdışı döşeme)',typeof caches!=='undefined','Safari özel gezinmede kapalı olabilir');
   dev('Konum (GPS) desteği',!!navigator.geolocation);
   dev('Pusula/hareket sensörü',typeof DeviceOrientationEvent!=='undefined','');

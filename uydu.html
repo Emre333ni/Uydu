@@ -296,7 +296,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
           </select>
         </label>
         <label>Tarih seçimi (çok tarihli)
-          <select id="aSeason"><option value="dry" selected>Kurak dönemler (yağış verisi)</option><option value="snow">Kar dönemleri (kar yağışı verisi)</option><option value="auto">Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option><option value="low">Alçak güneş (Kasım–Şubat: gölgeden kabartı)</option></select>
+          <select id="aSeason"><option value="dry" selected>Kurak dönemler (yaklaşık)</option><option value="snow">Kar dönemleri (yaklaşık)</option><option value="auto">Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option><option value="low">Alçak güneş (Kasım–Şubat, yaklaşık)</option></select>
         </label>
         <label>Gösterim
           <select id="aMode">
@@ -2936,6 +2936,20 @@ function addCrossBtn(box,ll,rec,mk){
 
 /* ---------- Dokun-incele: haritada dokunulan noktayı doğrudan ölç ---------- */
 let tapOn=false,tapPop=null;
+async function esriCapture(lat,lng){
+  const d=0.004,ext=[lng-d,lat-d,lng+d,lat+d].join(',');
+  const u='https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/identify?f=json&geometry='+lng+','+lat+
+    '&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=2&mapExtent='+ext+'&imageDisplay=400,400,96&returnGeometry=false';
+  const r=await fetch(u);if(!r.ok)throw new Error('http '+r.status);
+  const j=await r.json();if(j.error)throw new Error('servis hatası');
+  const at=(j.results||[]).map(x=>x.attributes).filter(Boolean).find(a=>a.SRC_DATE2!=null&&a.SRC_DATE2!=='Null');
+  if(!at)throw new Error('tarih yok');
+  const t=typeof at.SRC_DATE2==='number'?at.SRC_DATE2:Date.parse(at.SRC_DATE2);
+  if(isNaN(t))throw new Error('tarih yok');
+  const date=new Date(t).toISOString().slice(0,10),m=+date.slice(5,7);
+  const season=m>=5&&m<=9?'yaz, bitki dönemi':(m===3||m===4||m===10)?'ara mevsim':'kış, alçak güneş/kar olabilir';
+  return {date,season,res:at.SRC_RES!=null&&at.SRC_RES!=='Null'?at.SRC_RES:null,name:at.NICE_NAME&&at.NICE_NAME!=='Null'?at.NICE_NAME:null};
+}
 async function inspectPoint(lat,lon,say){
   const ll=L.latLng(lat,lon),thr=Math.max(1.5,+$('aThr').value);
   const rows=[];
@@ -2974,6 +2988,11 @@ async function inspectPoint(lat,lon,say){
     const r=await coreAsync('analyze',[g.data.data,cw,cw,mpp,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
     rows.push(describePeak(r,cw,cw,mpp,Math.max(3,Math.round(6/mpp)),false,'Görüntü (z'+z+', güncel)'));
   }catch(e){rows.push('Görüntü alınamadı')}
+  try{
+    say('Çekim tarihi okunuyor…');
+    const c=await esriCapture(lat,lon);
+    rows.push('Çekim tarihi: '+c.date+' ('+c.season+')'+(c.res?' · '+c.res+' m':''));
+  }catch(e){rows.push('Çekim tarihi okunamadı')}
   return rows.join('\n')+'\nSkor, çevresine göre farktır; yer altı kanıtı değildir.';
 }
 function tapToggle(on){

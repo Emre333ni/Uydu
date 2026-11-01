@@ -3040,6 +3040,22 @@ async function runSelfTest(){
     if(!window.GeoTIFF)await loadScript('https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js');
     return !!window.GeoTIFF;
   });
+  await timed('Gerçek çekim tarihi (Esri metadata)',async()=>{
+    const d=0.004,ext=[c.lng-d,c.lat-d,c.lng+d,c.lat+d].join(',');
+    const u='https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/identify?f=json&geometry='+c.lng+','+c.lat+
+      '&geometryType=esriGeometryPoint&sr=4326&layers=all&tolerance=2&mapExtent='+ext+'&imageDisplay=400,400,96&returnGeometry=false';
+    const r=await fetch(u);if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json();
+    if(j.error)throw new Error((j.error.message||'servis hatası'));
+    const rs=(j.results||[]).filter(x=>x.attributes);
+    if(!rs.length)throw new Error('sonuç yok');
+    const at=rs.map(x=>x.attributes).find(a=>a.SRC_DATE2!=null||a.SRC_DATE!=null)||rs[0].attributes;
+    const raw=at.SRC_DATE2!=null?at.SRC_DATE2:at.SRC_DATE;
+    let ds=null;
+    if(raw!=null&&raw!=='Null'){const t=typeof raw==='number'?raw:Date.parse(raw);if(!isNaN(t))ds=new Date(t).toISOString().slice(0,10)}
+    if(!ds)throw new Error('tarih alanı yok: '+Object.keys(at).slice(0,8).join(','));
+    return ds+(at.SRC_RES!=null&&at.SRC_RES!=='Null'?' · '+at.SRC_RES+' m':'')+(at.NICE_NAME&&at.NICE_NAME!=='Null'?' · '+at.NICE_NAME:'');
+  },'tarih seçimi yaklaşık kalır');
   await timed('Arazi gölgesi (z12)',img('https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',12));
   await timed('Yükseklik verisi (z15)',img(DEM_URL,15));
   await timed('Wayback tarih listesi',get(WB_CFG,{},async r=>{const j=await r.json();const n=Array.isArray(j)?j.length:Object.keys(j).length;return n+' tarih'}));

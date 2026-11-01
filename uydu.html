@@ -1113,7 +1113,7 @@ const OVP_HOSTS=['https://overpass-api.de/api/interpreter','https://overpass.kum
 let ovpDownUntil=0;
 async function ovpFetch(host,q,ms,fast){
   let err=null;
-  for(const mode of (fast?['POST']:['POST','GET'])){
+  for(const mode of ['POST','GET']){
     const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),ms);
     try{
       const r=mode==='POST'
@@ -1558,7 +1558,7 @@ async function osmCell(iy,ix){
     'way["landuse"~"^(residential|commercial|industrial|retail|construction|quarry|garages)$"]('+bb+');'+
     ');out geom;(nwr["historic"]('+bb+');nwr["tomb"]('+bb+'););out center tags;';
   let j=null;
-  try{j=await Promise.any(OVP_HOSTS.map(h=>ovpFetch(h,q,12000,true)))}
+  try{j=await Promise.any(OVP_HOSTS.map(h=>ovpFetch(h,q,6000,true)))}
   catch(e){ovpDownUntil=Date.now()+300000;throw new Error('OSM sunucuları yanıt vermiyor')}
   const el=j.elements||[];
   OSMC.put(key,{t:Date.now(),el});
@@ -2994,7 +2994,7 @@ async function runSelfTest(){
   await timed('Wayback tarih listesi',get(WB_CFG,{},async r=>{const j=await r.json();const n=Array.isArray(j)?j.length:Object.keys(j).length;return n+' tarih'}));
   await timed('Wayback görüntüsü',async()=>{if(!wbItems.length)throw new Error('liste yok');const it=wbItems[0];const t=tileOf(c.lat,c.lng,16);const im=await loadImg(tplUrl(it.url,16,t.x,t.y,'abc'));return im?it.date:null});
   await timed('Overpass (yol/bina)',async()=>{
-    const tryH=async h=>{await ovpFetch(h,'[out:json][timeout:8];node(39.8,37.5,39.801,37.501);out count;',8000);return true};
+    const tryH=async h=>{await ovpFetch(h,'[out:json][timeout:8];node(39.8,37.5,39.801,37.501);out count;',5000);return true};
     const res=await Promise.allSettled(OVP_HOSTS.map(tryH));
     const n=res.filter(x=>x.status==='fulfilled').length;
     lines.push('   sunucular: '+res.map((x,m)=>OVP_HOSTS[m].split('/')[2]+(x.status==='fulfilled'?' ✓':' ✗ '+(x.reason&&x.reason.message||''))).join('\n   '));

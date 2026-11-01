@@ -333,6 +333,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       </div>
       <div id="aRes"></div>
       <div id="candList"></div>
+      <div class="btns"><button id="bTap">Dokun-incele: kapalı</button></div>
       <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
       <div id="scanRes" style="white-space:pre-line;font-size:12px"></div>
       <div id="scanList"></div>
@@ -2609,7 +2610,12 @@ async function runScan(){
   if(is3d){setMsg('Tarama için önce 2B görünüme dönün.');return}
   if(map.getZoom()<11){setMsg('Tarama için en az 11. seviyeye yakınlaşın (görünen alan taranır).');return}
   const zd=15,CELL=512,STEP=448,thr=+$('aThr').value;
-  const b=map.getBounds(),p0=map.project(b.getNorthWest(),zd),p1=map.project(b.getSouthEast(),zd);
+  const b=map.getBounds();let p0=map.project(b.getNorthWest(),zd),p1=map.project(b.getSouthEast(),zd);
+  // Görünen alan küçükse (yakın zoom) yükselti analizi için en az ~256 piksel (≈0,7–1 km) çevre taranır
+  const MINW=256,viewSmall=(p1.x-p0.x<MINW||p1.y-p0.y<MINW);
+  if(p1.x-p0.x<MINW){const cx=(p0.x+p1.x)/2;p0=L.point(cx-MINW/2,p0.y);p1=L.point(cx+MINW/2,p1.y)}
+  if(p1.y-p0.y<MINW){const cy=(p0.y+p1.y)/2;p0=L.point(p0.x,cy-MINW/2);p1=L.point(p1.x,cy+MINW/2)}
+  const area={x0:p0.x,y0:p0.y,x1:p1.x,y1:p1.y};
   const nx=Math.max(1,Math.ceil((p1.x-p0.x-CELL)/STEP)+1),ny=Math.max(1,Math.ceil((p1.y-p0.y-CELL)/STEP)+1);
   if(nx*ny>64){setMsg('Alan çok geniş ('+nx*ny+' parça). Biraz yakınlaşın (en çok 64 parça, yaklaşık 10×10 km).');return}
   scanBusy=true;scanStop=false;
@@ -2630,6 +2636,8 @@ async function runScan(){
           const ents=buildEntries(r,mpp,thr,true,null);
           for(const en of ents){
             if(en.c.S<thr)continue;
+            const ax=x0+en.c.x,ay=y0+en.c.y;
+            if(ax<area.x0||ax>area.x1||ay<area.y0||ay>area.y1)continue;   // yalnız taranan alanın içi
             const V=verdict(en.c,en.st,null,CELL*mpp,en.chain,false);
             const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zd);
             found.push({lat:ll.lat,lon:ll.lng,S:en.c.S,V,mpp});
@@ -2649,11 +2657,12 @@ async function runScan(){
     if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<70))continue;
     kept.push(f);if(kept.length>=40)break;
   }
-  scanCands(kept,done,total,fails,thr);
+  scanCands(kept,done,total,fails,thr,viewSmall);
+  if(viewSmall){const a=map.unproject([area.x0,area.y0],zd),c=map.unproject([area.x1,area.y1],zd);map.fitBounds([[c.lat,a.lng],[a.lat,c.lng]],{animate:false,padding:[10,10]})}
   if(kept.length)setPanel(false);
   scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
 }
-function scanCands(kept,done,total,fails,thr){
+function scanCands(kept,done,total,fails,thr,viewSmall){
   const list=$('scanList');list.innerHTML='';scanLayer.clearLayers();
   const day=new Date().toLocaleDateString('tr-TR');
   lastCands=[];
@@ -2683,7 +2692,7 @@ function scanCands(kept,done,total,fails,thr){
     list.appendChild(bt);
   });
   $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+done+'/'+total+' parça tarandı · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
-    '\nYalnızca yükselti ile ön eleme (OSM elemesi yok). Aday seçip "Çapraz kontrol" ve "Tam analiz" yapın.'+(kept.length?'':'\nAday yok: eşiği düşürün ya da başka bölge deneyin.');
+    (viewSmall?'\nGörünen alan küçük olduğu için çevresindeki yaklaşık '+Math.round(256*mppAt(map.getCenter().lat,15))+' m tarandı.':'')+'\nYalnızca yükselti ile ön eleme (OSM elemesi yok). Aday seçip "Çapraz kontrol" ve "Tam analiz" yapın.'+(kept.length?'':'\nAday yok: eşiği düşürün ya da başka bölge deneyin.');
 }
 $('bScan').onclick=()=>runScan().catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Tarama başarısız: '+e.message)});
 $('bScanStop').onclick=()=>{scanStop=true};
@@ -2754,6 +2763,67 @@ function addCrossBtn(box,ll,rec,mk){
   };
   box.appendChild(b);box.appendChild(out);
 }
+
+/* ---------- Dokun-incele: haritada dokunulan noktayı doğrudan ölç ---------- */
+let tapOn=false,tapPop=null;
+async function inspectPoint(lat,lon,say){
+  const ll=L.latLng(lat,lon),thr=Math.max(1.5,+$('aThr').value);
+  const rows=[];
+  const pct=(S,w,h,v)=>{let n=0,t=0;for(let i=0;i<S.length;i+=3){t++;if(S[i]<v)n++}return t?n/t:0};
+  const peakAt=(S,w,h,rad)=>{let m=0,mx=w>>1,my=h>>1;const cx=w>>1,cy=h>>1;
+    for(let y=Math.max(0,cy-rad);y<=Math.min(h-1,cy+rad);y++)for(let x=Math.max(0,cx-rad);x<=Math.min(w-1,cx+rad);x++){
+      if((x-cx)*(x-cx)+(y-cy)*(y-cy)>rad*rad)continue;const v=S[y*w+x];if(v>m){m=v;mx=x;my=y}}
+    return {m,x:mx,y:my}};
+  const describePeak=(r,w,h,mpp,rad,isDem,label)=>{
+    if(r.flat)return label+': veri düz/boş';
+    const pk=peakAt(r.S,w,h,rad),i=pk.y*w+pk.x;
+    const top=Math.round((1-pct(r.S,w,h,pk.m))*100);
+    if(pk.m<thr*0.5)return label+': skor '+pk.m.toFixed(1)+' · çevresinden belirgin fark yok';
+    const c={x:pk.x,y:pk.y,S:pk.m,zE:r.zE?r.zE[i]:0,zL:r.zL?r.zL[i]:0,coh:r.coh?r.coh[i]:0,theta:r.theta?r.theta[i]:0,dem:!!isDem,crater:r.crater?r.crater[i]:0};
+    const st=CORE.blobStats(r.S,w,h,pk.x,pk.y,Math.max(thr*0.35,pk.m*0.5),mpp);
+    const V=verdict(c,st,null,Math.min(w,h)*mpp,null,false);
+    return label+': skor '+pk.m.toFixed(1)+' · bölgenin ilk %'+Math.max(1,top)+' · '+V.name+' · '+V.size+' · güven '+V.conf;
+  };
+  // yükselti
+  try{
+    say('Yükselti ölçülüyor…');
+    const zd=15,cw=384,pc=map.project(ll,zd),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,zd);
+    const g=await grabTiles(DEM_URL,null,zd,x0,y0,cw,cw);
+    if(g.error)throw new Error(g.error);
+    const r=await coreAsync('analyzeDem',[demElev(g.data,cw,cw),cw,cw,mpp,{bgMeters:120}]);
+    rows.push(describePeak(r,cw,cw,mpp,Math.max(4,Math.round(30/mpp)),true,'Yükselti (~30 m)'));
+  }catch(e){rows.push('Yükselti alınamadı')}
+  // güncel uydu
+  try{
+    say('Uydu görüntüsü ölçülüyor…');
+    let z=18;const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});
+    if(t===null)throw new Error('ağ');if(!t)z=17;
+    const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,z);
+    const g=await grabTiles(LAYERS.esri.url,'abc',z,x0,y0,cw,cw);
+    if(g.error)throw new Error(g.error);
+    const r=await coreAsync('analyze',[g.data.data,cw,cw,mpp,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
+    rows.push(describePeak(r,cw,cw,mpp,Math.max(3,Math.round(6/mpp)),false,'Görüntü (z'+z+', güncel)'));
+  }catch(e){rows.push('Görüntü alınamadı')}
+  return rows.join('\n')+'\nSkor, çevresine göre farktır; yer altı kanıtı değildir.';
+}
+function tapToggle(on){
+  tapOn=on;$('bTap').textContent='Dokun-incele: '+(on?'açık (haritaya dokun)':'kapalı');$('bTap').classList.toggle('on',on);
+  if(on){if(msrOn)msrToggle(false);setPanel(false)}else if(tapPop){map.closePopup(tapPop);tapPop=null}
+}
+$('bTap').onclick=()=>tapToggle(!tapOn);
+map.on('click',async e=>{
+  if(!tapOn||is3d||msrOn)return;
+  const box=document.createElement('div');box.className='popup';
+  const p=document.createElement('p');p.style.whiteSpace='pre-line';p.style.fontSize='12px';p.textContent='Ölçülüyor…';
+  const sm=document.createElement('small');sm.textContent=e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5);
+  box.appendChild(p);box.appendChild(sm);
+  const nb=document.createElement('button');nb.textContent='Nota ekle';
+  nb.onclick=()=>{map.closePopup();openNote(e.latlng.lat,e.latlng.lng,p.textContent+'\n')};box.appendChild(nb);
+  const pop=L.popup({maxWidth:300}).setLatLng(e.latlng).setContent(box).openOn(map);tapPop=pop;
+  const say=t=>{p.textContent=t;pop.update()};
+  try{say(await inspectPoint(e.latlng.lat,e.latlng.lng,say))}
+  catch(err){say('Ölçüm başarısız: '+err.message)}
+});
 
 /* ---------- Sistem testi: gerçek ağ ve cihaz özellikleri (telefonda) ---------- */
 async function runSelfTest(){
@@ -2834,6 +2904,7 @@ function msrRender(){
   $('msrT').textContent=msrPts.length?t:'Haritaya dokunarak nokta ekleyin';
 }
 function msrToggle(on){
+  if(on&&tapOn)tapToggle(false);
   msrOn=on;$('msr').hidden=!on;$('bMsr').classList.toggle('on',on);
   if(!on){msrPts=[];msrLayer.clearLayers()}else msrRender();
 }

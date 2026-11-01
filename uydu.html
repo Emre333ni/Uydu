@@ -291,11 +291,12 @@ body.full #brand,body.full #top,body.full #panel{display:none}
             <option value="B">B (sağ katman)</option>
             <option value="AB">A ve B ortak</option>
             <option value="MULTI">Çok tarihli (~10 tarih)</option>
+            <option value="S2Y">Sentinel-2 yıllık (10 m, çok yıllı büyük izler)</option>
             <option value="DEM">Arazi şekli (yükselti: höyük / çöküntü)</option>
           </select>
         </label>
         <label>Tarih seçimi (çok tarihli)
-          <select id="aSeason"><option value="dry" selected>Kurak dönemler (yağış verisi)</option><option value="snow">Kar dönemleri (kar yağışı verisi)</option><option value="auto">Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option></select>
+          <select id="aSeason"><option value="dry" selected>Kurak dönemler (yağış verisi)</option><option value="snow">Kar dönemleri (kar yağışı verisi)</option><option value="auto">Otomatik (yaz yayınları öncelikli)</option><option value="summer">Yalnız yaz (Mayıs–Eylül)</option><option value="all">Tüm yıl</option><option value="low">Alçak güneş (Kasım–Şubat: gölgeden kabartı)</option></select>
         </label>
         <label>Gösterim
           <select id="aMode">
@@ -321,10 +322,14 @@ body.full #brand,body.full #top,body.full #panel{display:none}
           <input id="aFocus" type="range" min="0" max="100" value="35">
         </label>
       </div>
+      <label>Hedef
+        <select id="aTarget"><option value="all" selected>Hepsi</option><option value="mound">Höyük / tümülüs</option><option value="under">Yer altı (tünel, çöküntü)</option><option value="tomb">Mezar (lahit, oda mezar)</option><option value="road">Yol / duvar hattı</option></select>
+      </label>
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="aOsm" checked> Yol, bina, çit ve su hatlarını ele (OpenStreetMap)</label>
+      <label class="chk"><input type="checkbox" id="aVil" checked> Yerleşim alanlarını da ele (köy içinde arıyorsan kapat)</label>
       <div class="btns">
         <div class="btns"><button id="bPhoto">Kendi fotoğrafını analiz et</button><button id="bKnown">Yakındaki bilinen alanlar</button></div>
-        <div class="btns"><button id="bVal">Doğrulama testi (bilinen alanlarda)</button><button id="bVal2">Yükseklik doğrulaması (60 km, çok alan)</button></div>
+        <div class="btns"><button id="bVal">Doğrulama testi (bilinen alanlarda)</button><button id="bVal2">Kendi kendine ayarla (yükselti, bilinen alanlarla)</button></div>
         <input id="phFile" type="file" accept="image/*" hidden>
         <button id="bPreset" style="margin-bottom:8px">Hassas tarama ayarı (eşik 1.8, birleşik skor, OSM açık)</button>
         <button id="bAnalyze" class="pri">Bu görünümü analiz et</button>
@@ -1542,7 +1547,7 @@ const OSMC={mem:new Map(),db:null,
   }};
 const OSM_CELL=0.02;
 async function osmCell(iy,ix){
-  const key=iy+':'+ix,hit=await OSMC.get(key);
+  const key='v2:'+iy+':'+ix,hit=await OSMC.get(key);
   if(hit)return hit.el;
   if(Date.now()<ovpDownUntil)throw new Error('OSM sunucuları yanıt vermiyor (atlandı)');
   const s0=iy*OSM_CELL,w0=ix*OSM_CELL;
@@ -1550,6 +1555,7 @@ async function osmCell(iy,ix){
   const q='[out:json][timeout:25];('+
     'way["highway"]('+bb+');way["railway"]('+bb+');way["waterway"]('+bb+');way["barrier"]('+bb+');'+
     'way["power"~"^(line|minor_line)$"]('+bb+');way["building"]('+bb+');'+
+    'way["landuse"~"^(residential|commercial|industrial|retail|construction|quarry|garages)$"]('+bb+');'+
     ');out geom;(nwr["historic"]('+bb+');nwr["tomb"]('+bb+'););out center tags;';
   let j=null;
   try{j=await Promise.any(OVP_HOSTS.map(h=>ovpFetch(h,q,12000,true)))}
@@ -1590,12 +1596,13 @@ function buildMask(osm,z,x0,y0,cw,ch,mpp){
     if(t.highway)wm=['motorway','trunk','primary','secondary'].includes(t.highway)?14:['tertiary','residential','unclassified','service'].includes(t.highway)?8:5;
     else if(t.railway)wm=8;else if(t.waterway)wm=6;
     g.lineWidth=Math.max(3,wm/mpp);
+    if(t.landuse&&!$('aVil').checked)continue;      // yerleşim alanı elemesi kapalıysa çokgeni atla
     g.beginPath();
     el.geometry.forEach((p,i)=>{
       const q=map.project([p.lat,p.lon],z),px=q.x-x0,py=q.y-y0;
       i?g.lineTo(px,py):g.moveTo(px,py);
     });
-    if(t.building){g.closePath();g.fill()}
+    if(t.building||t.landuse){g.closePath();g.fill()}
     g.stroke();
   }
   const d=g.getImageData(0,0,cw,ch).data,m=new Uint8Array(cw*ch);
@@ -1652,6 +1659,7 @@ async function runAnalysis(){
   const src=$('aSrc').value;
   if(src==='MULTI')return runMulti();
   if(src==='DEM')return runDem();
+  if(src==='S2Y')return runS2Years();
   const btn=$('bAnalyze');
   const sides=src==='AB'?['A','B']:[src];
   for(const s of sides){
@@ -1711,7 +1719,7 @@ async function recomputeDem(){
   const r=await coreAsync('analyzeDem',[last.elev,last.cw,last.ch,last.mpp,{bgMeters:+$('aBg').value}]);
   if(my!==calcGen||last!==L0)return;
   if(r.flat){setMsg('Bu bölgede yükselti farkı çok az (düz arazi ya da veri yok).');return}
-  last.res=Object.assign({},r,{S:CORE.applyMask(r.S,last.mask)});last.R=r.R;
+  last.res=Object.assign({},r,{S:CORE.applyMask(r.S,last.mask),elev:last.elev});last.R=r.R;
   setMsg('');showResult();
 }
 $('bPreset').onclick=()=>{
@@ -1743,7 +1751,7 @@ async function compute(){
 }
 
 /* Çok tarihli analiz */
-let d_snowN=0;
+let d_snowN=0,d_lowN=0;
 function pickDates(n){
   const mode=$('aSeason').value,mo=d=>+d.date.slice(5,7);
   let arr=wbItems;
@@ -1757,7 +1765,13 @@ function pickDates(n){
     const dry=wbItems.filter(d=>{const q=dryPct(d.date);d.dryv=q;return q!=null&&q<=0.4&&mo(d)>=4&&mo(d)<=10});
     if(dry.length>=4)arr=dry;
   }
-  if(arr===wbItems&&mode!=='all'&&mode!=='snow'){const g=wbItems.filter(d=>mo(d)>=5&&mo(d)<=9);if(g.length>=(mode==='summer'?4:8))arr=g}
+  if(mode==='low'){
+    let w=wbItems.filter(d=>{const m=mo(d);return m>=11||m<=2});
+    if(climate.ok){const w2=w.filter(d=>(snow10(d.date)||0)<1);if(w2.length>=4)w=w2}   // karla örtülü günleri ele: gölge görünsün
+    d_lowN=w.length;
+    if(w.length>=3)arr=w;
+  }
+  if(arr===wbItems&&mode!=='all'&&mode!=='snow'&&mode!=='low'){const g=wbItems.filter(d=>mo(d)>=5&&mo(d)<=9);if(g.length>=(mode==='summer'?4:8))arr=g}
   const m=Math.min(arr.length,n),out=[],seen=new Set();
   for(let k=0;k<m;k++){
     const i=Math.round(k*(arr.length-1)/Math.max(1,m-1));
@@ -1777,7 +1791,7 @@ async function runMulti(){
     const c=map.project(map.getCenter(),z);
     const x0=Math.round(c.x-cw/2),y0=Math.round(c.y-ch/2);
     const mpp=156543.03392*Math.cos(map.getCenter().lat*Math.PI/180)/Math.pow(2,z);
-    if(['dry','snow'].includes($('aSeason').value)){setMsg('Yağış verisi alınıyor…');await ensureClimate()}
+    if(['dry','snow','low'].includes($('aSeason').value)){setMsg('Yağış verisi alınıyor…');await ensureClimate()}
     const cands=pickDates(24);
     const tx=Math.floor((x0+cw/2)/256),ty=Math.floor((y0+ch/2)/256);
     setMsg('Tarihler taranıyor (aynı görüntünün tekrarları atlanacak)…');
@@ -1813,7 +1827,7 @@ async function runMulti(){
       dates.push({date:chosen[k].date,mounds:r.mounds,raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:chosen[k].dryv,snow:CORE.snowFrac(g.data.data,cw,ch)>0.35});
     }
     if(dates.length<2){setMsg('Yeterli sayıda tarihin görüntüsü alınamadı.');return}
-    last={mode:'multi',dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:(o.note?o.note+'\n':'')+($('aSeason').value==='snow'?(climate.ok?'Kar dönemi seçimi: '+d_snowN+' kar tarihi bulundu, '+dates.filter(d=>d.snow).length+'/'+dates.length+' görüntüde kar var':'Kar verisi alınamadı'):'')+($('aSeason').value==='dry'?(climate.ok?'Kurak dönem seçimi: '+dates.filter(d=>d.dry!=null&&d.dry<=0.4).length+'/'+dates.length+' tarih kurak':'Yağış verisi alınamadı, yaz tarihleri kullanıldı'):''),desc:new Map()};
+    last={mode:'multi',dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],note:(o.note?o.note+'\n':'')+($('aSeason').value==='snow'?(climate.ok?'Kar dönemi seçimi: '+d_snowN+' kar tarihi bulundu, '+dates.filter(d=>d.snow).length+'/'+dates.length+' görüntüde kar var':'Kar verisi alınamadı'):'')+($('aSeason').value==='low'?'Alçak güneş seçimi: '+d_lowN+' kış tarihi bulundu, '+dates.filter(d=>+d.date.slice(5,7)>=11||+d.date.slice(5,7)<=2).length+'/'+dates.length+' tarih kışa ait':'')+($('aSeason').value==='dry'?(climate.ok?'Kurak dönem seçimi: '+dates.filter(d=>d.dry!=null&&d.dry<=0.4).length+'/'+dates.length+' tarih kurak':'Yağış verisi alınamadı, yaz tarihleri kullanıldı'):''),desc:new Map()};
     setMsg('');
     showResult();
   }catch(e){
@@ -1821,11 +1835,41 @@ async function runMulti(){
   }finally{btn.disabled=false}
 }
 
+/* Sentinel-2 yıllık bulutsuz mozaik (EOX, ~10 m): aynı yerin birçok yılı. Büyük, kalıcı izler (30 m üstü) için. */
+const bgNow=()=>{const v=+$('aBg').value;return last&&last.s2y?Math.max(120,v):v};
+const S2_YEARS=[2016,2017,2018,2019,2020,2021,2022,2023,2024];
+const s2Url=y=>'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+y+'_3857/default/g/{z}/{y}/{x}.jpg';
+async function runS2Years(){
+  if(map.getZoom()<10){setMsg('Sentinel-2 analizi için en az 10. seviyeye yakınlaşın.');return}
+  const btn=$('bAnalyze');btn.disabled=true;
+  try{
+    const z=14,cw=512,ch=512,c=map.project(map.getCenter(),z);
+    const x0=Math.round(c.x-cw/2),y0=Math.round(c.y-ch/2),mpp=mppAt(map.getCenter().lat,z);
+    const o=await osmForRegion(z,x0,y0,cw,ch,mpp);
+    const dates=[];let R=0,miss=0;
+    for(const y of S2_YEARS){
+      setMsg('Sentinel-2 '+y+' alınıyor…');await sleep(10);
+      const g=await grabTiles(s2Url(y),null,z,x0,y0,cw,ch);
+      if(g.error){miss++;continue}
+      const r=await coreAsync('analyze',[g.data.data,cw,ch,mpp,{bgMeters:Math.max(120,+$('aBg').value||120)}]);
+      if(r.flat){miss++;continue}
+      R=r.R;
+      dates.push({date:y+'-07-01',mounds:[],raw:g.data,S:CORE.applyMask(r.S,o.mask),dry:null,snow:false});
+    }
+    if(dates.length<3){setMsg('Sentinel-2 yıllık verisinden yeterli yıl alınamadı ('+dates.length+'). Başka bir bölge ya da daha sonra deneyin.');return}
+    last={mode:'multi',s2y:true,dates,z,x0,y0,cw,ch,mpp,R,mask:o.mask,osm:o.osm,siteList:(o.osm&&o.osm.sites)||[],
+      note:(o.note?o.note+'\n':'')+'Sentinel-2 yıllık mozaik (EOX) '+dates.length+' yıl'+(miss?' ('+miss+' yıl alınamadı)':'')+', ~'+Math.round(mpp)+' m/piksel: yalnızca büyük kalıcı izler (30 m üstü). Tüm yılın birleşimi olduğundan bitki izi zayıf.',desc:new Map()};
+    setMsg('');
+    showResult();
+  }catch(e){setMsg('Sentinel-2 analizi başarısız: '+e.message)}
+  finally{btn.disabled=false}
+}
+
 async function recomputeMulti(){
   if(!last||last.mode!=='multi')return;
   setMsg('Yeniden hesaplanıyor…');
   await sleep(20);
-  const P={bgMeters:+$('aBg').value};
+  const P={bgMeters:bgNow()};
   for(const d of last.dates){
     const r=await coreAsync('analyze',[d.raw.data,last.cw,last.ch,last.mpp,P]);
     if(r.flat)continue;
@@ -1845,6 +1889,25 @@ function describe(c){
   return t.join(', ');
 }
 const DIRS=['K–G','KD–GB','D–B','KB–GD'];
+const TARGETS={
+  mound:['Höyük / Tümülüs?','Yağmalı Tümülüs?','Tümülüs','Çöken Tümülüs','Yükselti','Geniş Leke'],
+  under:['Tünel Hattı','Çöküntü Hattı','Çöküntü','Çöken Tümülüs','Erken Eriyen İz','Geç Eriyen İz'],
+  tomb:['Lahit / Gömü','Oda Mezar İzi','Yağmalı Tümülüs?','Çöken Tümülüs','Tümülüs','Höyük / Tümülüs?'],
+  road:['Yol / Duvar Hattı?','Hendek Hattı','Tünel Hattı','Tarla Sınırı?']
+};
+const matchTarget=name=>{const t=$('aTarget')?$('aTarget').value:'all';return t==='all'||(TARGETS[t]||[]).includes(name)};
+// Ortalama eğim (derece): adayın çevresindeki halkada. Doğal tepe/yamaç ile düz ovadaki tümsek ayrımı için
+function slopeRing(el,w,h,mpp,cx,cy,r0m,r1m){
+  const k=Math.max(1,Math.round(30/mpp)),r0=r0m/mpp,r1=r1m/mpp;let sum=0,n=0;
+  const step=Math.max(2,Math.round(r1/40));
+  for(let y=Math.max(k,Math.floor(cy-r1));y<=Math.min(h-1-k,Math.ceil(cy+r1));y+=step)
+    for(let x=Math.max(k,Math.floor(cx-r1));x<=Math.min(w-1-k,Math.ceil(cx+r1));x+=step){
+      const d=Math.hypot(x-cx,y-cy);if(d<r0||d>r1)continue;
+      const gx=(el[y*w+x+k]-el[y*w+x-k])/(2*k*mpp),gy=(el[(y+k)*w+x]-el[(y-k)*w+x])/(2*k*mpp);
+      sum+=Math.atan(Math.hypot(gx,gy))*180/Math.PI;n++;
+    }
+  return n>=6?sum/n:null;
+}
 
 /* Net yorum: kural tabanlı tahmin (kesin bilgi değildir) */
 function verdict(c,st,seenRatio,spanM,chain,snow){
@@ -1854,11 +1917,13 @@ function verdict(c,st,seenRatio,spanM,chain,snow){
   if(c.mound)name=(L>=12&&L<=250)?(c.pit?'Yağmalı Tümülüs?':'Höyük / Tümülüs?'):'Geniş Leke';
   else if(chain)name='Çöküntü Hattı';
   else if(c.dem){
-    if(c.zL>0&&c.crater)name='Çöken Tümülüs';
+    if(c.zL>0&&c.slope!=null&&c.slope>=8&&!c.crater)name='Doğal Tepe?';
+    else if(c.zL>0&&c.crater)name='Çöken Tümülüs';
     else if(c.zL>0)name=(el<1.6&&L>=20&&L<=200)?'Tümülüs':'Yükselti';
     else name=(el>=3&&L>=60)?'Çöküntü Hattı':'Çöküntü';
   }
   else if(st.capped||(L>=0.6*spanM&&el>=6))name='Tarla Sınırı?';
+  else if(el>=5&&L>=40)name='Yol / Duvar Hattı?';
   else if(el>=3.5&&L>=12)name=(vegDom&&c.zE>0)?'Hendek Hattı':'Tünel Hattı';
   else if(L<7&&st.area<40)name=(L>=1.5&&c.S>=4&&(seenRatio==null||seenRatio>=0.5))?'Lahit / Gömü':'Zayıf İz';
   else if(L<30){
@@ -1905,7 +1970,7 @@ function enrichMulti(cands,thr){
   for(const [d,list] of byDate){
     const need=list.filter(c=>!last.desc.has(d+':'+c.x+':'+c.y));
     if(need.length){
-      const r=CORE.analyze(dates[d].raw.data,cw,ch,last.mpp,{bgMeters:+$('aBg').value});
+      const r=CORE.analyze(dates[d].raw.data,cw,ch,last.mpp,{bgMeters:bgNow()});
       if(!r.flat)for(const c of need){
         const i=c.y*cw+c.x;
         last.desc.set(d+':'+c.x+':'+c.y,{zE:r.zE[i],zL:r.zL[i],coh:r.coh[i],theta:r.theta[i]});
@@ -1927,7 +1992,7 @@ function enrichMulti(cands,thr){
       if(th===undefined){
         if(!last.thetaFull)last.thetaFull=new Map();
         let T=last.thetaFull.get(d);
-        if(!T){const r=CORE.analyze(dates[d].raw.data,cw,ch,last.mpp,{bgMeters:+$('aBg').value});T=r.flat?null:r.theta;last.thetaFull.set(d,T)}
+        if(!T){const r=CORE.analyze(dates[d].raw.data,cw,ch,last.mpp,{bgMeters:bgNow()});T=r.flat?null:r.theta;last.thetaFull.set(d,T)}
         th=T?T[c.y*cw+c.x]:null;last.thetaC.set(d+':'+c.x+':'+c.y,th);
       }
       if(th==null)continue;
@@ -2035,6 +2100,7 @@ function buildEntries(res,mpp,thr,isDem,enrich){
     entries.unshift({c,st:c.st,center:true});
     if(entries.length>10)entries.pop();
   }
+  if(isDem&&res.elev)entries.forEach(en=>{en.c.slope=slopeRing(res.elev,res.w,res.h,mpp,en.c.x,en.c.y,Math.max(70,en.st.L/2+40),Math.max(200,en.st.L/2+160))});
   entries.centerScore=bv;
   return entries;
 }
@@ -2073,6 +2139,13 @@ function showResult(){
   const list=$('candList');list.innerHTML='';
   const entries=buildEntries(res,mpp,thr,last.dem,pool=>{if(last.mode==='multi')enrichMulti(pool,thr)});
   lastCands=[];candData=[];
+  if($('aTarget').value!=='all'){
+    const keep=entries.filter(en=>{
+      const snowC0=last.dem?false:(last.mode==='multi'?!!(last.dates[en.c.best]&&last.dates[en.c.best].snow):!!last.snow);
+      return matchTarget(verdict(en.c,en.st,last.mode==='multi'?en.c.seen/en.c.N:null,Math.min(res.w,res.h)*mpp,en.chain,snowC0).name);
+    });
+    keep.centerScore=entries.centerScore;entries.length=0;keep.forEach(e=>entries.push(e));
+  }
   entries.forEach((en,k)=>{
     const c=en.c,st=en.st;
     const ll=map.unproject([x0+c.x+0.5,y0+c.y+0.5],z);
@@ -2091,14 +2164,14 @@ function showResult(){
     for(const sx of (last.siteList||[]).concat(knownSites)){const d=ll.distanceTo([sx.lat,sx.lon]);if(!near||d<near.d)near={d,s:sx}}
     const nearTxt=(near&&near.d<200)?'kayıtlı alan: '+(near.s.name||near.s.kind)+' '+Math.round(near.d)+' m':'';
     const oriT=(last.mode==='multi'&&c.oriC!=null&&!V.round)?(c.oriC>=0.8?' · yön tutarlı':c.oriC<0.5?' · yön tutarsız':''):'';
-    const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'')+oriT;
+    const sub=V.size+' · güven '+V.conf+(last.mode==='multi'?' · '+c.seen+'/'+c.N+' tarih':'')+oriT+((last.dem&&c.slope!=null)?' · eğim '+Math.round(c.slope)+'°':'');
     const txt=head+' · '+sub+(nearTxt?' · '+nearTxt:'');
     let thumb=null;
     try{
       const src=last.dem?null:(last.mode==='multi'?last.dates[c.best].raw:last.raw[last.sides[0]]);
       if(src)thumb=makeThumb(src,c.x,c.y);
     }catch(e){}
-    const srcT=last.dem?'Terrarium yükselti (~30 m)':last.mode==='multi'?'Esri Wayback '+last.dates.map(d=>d.date).sort()[0]+' … '+last.dates.map(d=>d.date).sort().slice(-1)[0]:last.sides.map(sd=>layer[sd]&&layer[sd].options.attribution||'?').join(' + ');
+    const srcT=last.dem?'Terrarium yükselti (~30 m)':last.mode==='multi'?(last.s2y?'Sentinel-2 yıllık mozaik (EOX) ':'Esri Wayback ')+last.dates.map(d=>d.date).sort()[0].slice(0,last.s2y?4:10)+' … '+last.dates.map(d=>d.date).sort().slice(-1)[0].slice(0,last.s2y?4:10):last.sides.map(sd=>layer[sd]&&layer[sd].options.attribution||'?').join(' + ');
     const meta=(last.dem?'Arazi şekli (yükselti)':last.mode==='multi'?'Çok tarihli, '+last.dates.length+' tarih':'Tek tarih')+' · kaynak: '+srcT+' · analiz '+new Date().toLocaleDateString('tr-TR')+' · eşik '+thr.toFixed(1)+' · '+mpp.toFixed(2)+' m/piksel';
     const rec={lat:ll.lat,lon:ll.lng,text:txt+(dots?' · '+dots:''),name:V.name,conf:V.conf,size:V.size,why:head,thumb,meta};
     lastCands.push(rec);
@@ -2185,7 +2258,7 @@ $('zOut').onclick=()=>{if(is3d&&m3)m3.zoomOut();else map.zoomOut()};
 // Doğrulama sonucu: yükseklik modunda 100–150 m arka plan, bilinen höyükleri ayırt ediyor (≈%18 bilinen, ≈%1–3 rastgele)
 let bgPrev=null;
 $('aSrc').addEventListener('change',()=>{
-  if($('aSrc').value==='DEM'){bgPrev=$('aBg').value;$('aBg').value=120;$('vBg').textContent='120 m'}
+  if($('aSrc').value==='DEM'){bgPrev=$('aBg').value;const tb=tunedBg();$('aBg').value=tb;$('vBg').textContent=tb+' m'}
   else if(bgPrev!=null){$('aBg').value=bgPrev;$('vBg').textContent=bgPrev+' m';bgPrev=null}
 });
 $('aBg').oninput=e=>{
@@ -2600,6 +2673,67 @@ async function runValidate(){
 }
 $('bVal').onclick=runValidate;
 
+/* ---------- Kendi kendine ayarlama: bilinen alanlarla yükselti ayarını seç ---------- */
+function tunedBg(){try{const t=JSON.parse(localStorage.getItem('uydu-tune')||'null');if(t&&t.bg>=30&&t.bg<=300)return t.bg}catch(e){}return 120}
+async function runTune(){
+  const btn=$('bVal2');btn.disabled=true;
+  try{
+    if(!knownSites.length)await loadKnown();
+    if(knownSites.length<6){setMsg('Ayarlama için en az 6 bilinen alan gerekir. Haritayı kayıtlı alanların bol olduğu bir bölgeye getirip tekrar deneyin.');return}
+    const cen=map.getCenter();
+    const sites=knownSites.slice().sort((a,b)=>cen.distanceTo([a.lat,a.lon])-cen.distanceTo([b.lat,b.lon])).slice(0,24);
+    const cells=[];const zd=15,dw=512,dh=512;
+    let k=0;
+    for(const st of sites){
+      k++;setMsg('Veri toplanıyor '+k+'/'+sites.length+'…');await sleep(10);
+      for(const [kind,dx] of [['site',0],['ctrl',0.009],['ctrl',-0.009]]){
+        try{
+          const lat=st.lat,lon=st.lon+dx,c=map.project(L.latLng(lat,lon),zd);
+          const g=await grabTiles(DEM_URL,null,zd,Math.round(c.x-dw/2),Math.round(c.y-dh/2),dw,dh);
+          if(g.error)continue;
+          cells.push({kind,el:demElev(g.data,dw,dh),mpd:mppAt(lat,zd)});
+        }catch(e){}
+      }
+    }
+    const nS=cells.filter(c=>c.kind==='site').length,nC=cells.filter(c=>c.kind==='ctrl').length;
+    if(nS<6||nC<6){setMsg('Yeterli veri alınamadı ('+nS+' alan, '+nC+' kontrol).');return}
+    const BGS=[60,90,120,160,220],THR=[2,3,4],tab={};
+    for(const bg of BGS){
+      setMsg('Ayarlar deneniyor: arka plan '+bg+' m…');
+      for(const c of cells){
+        const r=await coreAsync('analyzeDem',[c.el,dw,dh,c.mpd,{bgMeters:bg}]);
+        for(const th of THR){
+          let hit=false;
+          if(!r.flat){
+            const cs=CORE.pickCandidates(r,c.mpd,th,6);
+            for(const q of cs){if(Math.hypot(q.x-dw/2,q.y-dh/2)*c.mpd<=150){hit=true;break}}
+          }
+          const key=bg+'|'+th,t=tab[key]||(tab[key]={hs:0,hc:0});
+          if(hit){if(c.kind==='site')t.hs++;else t.hc++}
+        }
+      }
+    }
+    let best=null;const lines=[];
+    for(const bg of BGS)for(const th of THR){
+      const t=tab[bg+'|'+th],d=t.hs/nS-t.hc/nC;
+      lines.push({bg,th,d,hs:t.hs,hc:t.hc});
+      if(!best||d>best.d+1e-9)best={bg,th,d,hs:t.hs,hc:t.hc};
+    }
+    lines.sort((a,b)=>b.d-a.d);
+    let txt='Ayarlama: '+nS+' bilinen alan, '+nC+' rastgele yer (150 m içinde iz var mı)\n';
+    txt+=lines.slice(0,5).map(l=>'arka plan '+l.bg+' m · eşik '+l.th+': bilinen '+l.hs+'/'+nS+' · rastgele '+l.hc+'/'+nC).join('\n');
+    if(best.d>=0.08){
+      try{localStorage.setItem('uydu-tune',JSON.stringify({bg:best.bg,thr:best.th,n:nS,t:Date.now()}))}catch(e){}
+      if($('aSrc').value==='DEM'){$('aBg').value=best.bg;$('vBg').textContent=best.bg+' m'}
+      txt+='\nSeçilen: arka plan '+best.bg+' m (yükselti modunda uygulanır). Önerilen eşik: '+best.th+'.';
+    }else txt+='\nBilinen alanlar rastgele yerlerden anlamlı ayrılmadı; ayar değiştirilmedi.';
+    txt+='\nNot: Bu ayarlama yalnızca kayıtlı arkeolojik alanlara göre yapıldı (çoğu höyük, tümülüs ve kalıntı). Yer altı şehri, mezar ve yol için ayrı örnek verisi yok; onların ayarı değişmedi.';
+    $('aRes').textContent=txt;setMsg('');
+  }catch(e){setMsg('Ayarlama başarısız: '+e.message)}
+  finally{btn.disabled=false}
+}
+$('bVal2').onclick=runTune;
+
 /* ---------- Bölge tarama (yükselti) ve çapraz kontrol ---------- */
 const scanLayer=L.layerGroup().addTo(map);
 let scanStop=false,scanBusy=false;
@@ -2631,14 +2765,17 @@ async function runScan(){
         const g=await grabTiles(DEM_URL,null,zd,x0,y0,CELL,CELL);
         if(g.error){fails++;done++;continue}
         const cl=map.unproject([x0+CELL/2,y0+CELL/2],zd),mpp=mppAt(cl.lat,zd);
-        const r=await coreAsync('analyzeDem',[demElev(g.data,CELL,CELL),CELL,CELL,mpp,{bgMeters:120}]);
+        const demElevCell=demElev(g.data,CELL,CELL);
+        const r=await coreAsync('analyzeDem',[demElevCell,CELL,CELL,mpp,{bgMeters:120}]);
         if(!r.flat){
+          r.elev=demElevCell;
           const ents=buildEntries(r,mpp,thr,true,null);
           for(const en of ents){
             if(en.c.S<thr)continue;
             const ax=x0+en.c.x,ay=y0+en.c.y;
             if(ax<area.x0||ax>area.x1||ay<area.y0||ay>area.y1)continue;   // yalnız taranan alanın içi
             const V=verdict(en.c,en.st,null,CELL*mpp,en.chain,false);
+            if(!matchTarget(V.name))continue;
             const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zd);
             found.push({lat:ll.lat,lon:ll.lng,S:en.c.S,V,mpp});
           }
@@ -2845,6 +2982,13 @@ async function runSelfTest(){
   await timed('Esri uydu gerçek detay (z18 var mı)',async()=>{const r=await tileReal(LAYERS.esri.url,'abc',18,c);if(r===null)throw new Error('alınamadı');return r?'z18 görüntü var':'z18 yok (boş döşeme)'});
   await timed('Esri Clarity (z16)',img(LAYERS.clarity.url,16));
   await timed('Sentinel-2 (EOX, z12)',img(LAYERS.s2.url,12));
+  await timed('Sentinel-2 yıllık (EOX, 2016–2024)',async()=>{
+    const t=tileOf(c.lat,c.lng,12);let n=0;const bad=[];
+    const rs=await Promise.all(S2_YEARS.map(async y=>{const im=await loadImg(tplUrl(s2Url(y),12,t.x,t.y,null));return im?y:null}));
+    rs.forEach((v,i)=>{if(v)n++;else bad.push(S2_YEARS[i])});
+    if(n<3)throw new Error(n+'/'+S2_YEARS.length+' yıl alınabildi');
+    return n+'/'+S2_YEARS.length+' yıl'+(bad.length?' (yok: '+bad.join(', ')+')':'');
+  });
   await timed('Arazi gölgesi (z12)',img('https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',12));
   await timed('Yükseklik verisi (z15)',img(DEM_URL,15));
   await timed('Wayback tarih listesi',get(WB_CFG,{},async r=>{const j=await r.json();const n=Array.isArray(j)?j.length:Object.keys(j).length;return n+' tarih'}));
@@ -2995,7 +3139,7 @@ async function showSeries(k){
   if(!last||last.mode!=='multi'){setMsg('Zaman serisi yalnızca çok tarihli analizde var.');return}
   const {dates,cw,ch}=last;
   if(!candData[k].series){
-    const P={bgMeters:+$('aBg').value};
+    const P={bgMeters:bgNow()};
     const ser=candData.map(()=>[]);
     for(let i=0;i<dates.length;i++){
       setMsg('Zaman serisi hesaplanıyor '+(i+1)+'/'+dates.length+'…');

@@ -2111,7 +2111,9 @@ function buildEntries(res,mpp,thr,isDem,enrich){
       entries.push({c,st:{L:m.Dm,W:m.Dm,area:Math.PI*m.Dm*m.Dm/4,rect:0,bear:0,capped:false},mound:true});
     }
   }
-  entries.sort((a,b)=>b.c.S-a.c.S);
+  // Sıralama: önce çok tarihte tekrar eden (>=%60), sonra skor. Tek tarihli parlak leke (tarla, su kenarı) aşağı düşer.
+  const rep6=e=>{const c=e.c;return (c.seen!=null&&c.N)?(c.seen/c.N>=0.6?1:0):1};
+  entries.sort((a,b)=>rep6(b)-rep6(a)||b.c.S-a.c.S);
   entries=entries.slice(0,10);
   // Merkez (artı işareti) her zaman incelenir: eşiğin altında kalsa bile en güçlü izi bildirilir
   const cx=res.w>>1,cy=res.h>>1,rad=Math.max(6,Math.round((isDem?60:12)/mpp));
@@ -2954,6 +2956,29 @@ function addCrossBtn(box,ll,rec,mk){
 
 /* ---------- Dokun-incele: haritada dokunulan noktayı doğrudan ölç ---------- */
 let tapOn=false,tapPop=null;
+var geoCache={};
+async function geoAt(lat,lon){
+  const key=lat.toFixed(3)+','+lon.toFixed(3);
+  if(geoCache[key])return geoCache[key];
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),7000);
+  try{
+    const r=await fetch('https://macrostrat.org/api/v2/geologic_units/map?lat='+lat+'&lng='+lon+'&response=long&format=json',{signal:ac.signal});
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json();
+    const d=(j.success&&j.success.data)||[];
+    if(!d.length)throw new Error('kayıt yok');
+    const u=d[0],txt=[u.lith,u.name,u.strat_name,u.descrip].filter(Boolean).join(' ').toLowerCase();
+    const lith=String(u.lith||u.name||'bilinmiyor').split(/[;,]/).slice(0,2).join(',').trim().slice(0,40);
+    let kind,note;
+    if(/gypsum|evaporite|anhydrite|jips|alçı/.test(txt)){kind='jips';note='alçı/jips: çöküntü çukuru (düden) çok yaygın'}
+    else if(/tuff|ignimbrit|tephra|volcaniclast|pyroclast/.test(txt)){kind='tuf';note='yumuşak tüf: kaya oyma yer altı yapısına uygun'}
+    else if(/limestone|sandstone|chalk|marl|travertine|conglomerate|carbonate|kireç/.test(txt)){kind='kaya';note='işlenebilir kaya: kaya oyma mezar/oda mümkün'}
+    else if(/alluvi|quaternary|colluvi|sand|gravel|clay|silt|soil|loess/.test(txt)){kind='ova';note='gevşek dolgu/ova: kaya oyma beklenmez, tümülüs/höyük olabilir'}
+    else if(/granit|basalt|gneiss|schist|quartzite|diorite|gabbro|andesit|rhyolit|metamorph/.test(txt)){kind='sert';note='sert kaya: oyma zor'}
+    else{kind='?';note='tür belirsiz'}
+    return geoCache[key]={lith,kind,note,age:u.age||u.t_int_name||''};
+  }finally{clearTimeout(tm)}
+}
 async function esriCapture(lat,lng){
   const d=0.004,ext=[lng-d,lat-d,lng+d,lat+d].join(',');
   const u='https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/identify?f=json&geometry='+lng+','+lat+
@@ -3006,6 +3031,11 @@ async function inspectPoint(lat,lon,say){
     const r=await coreAsync('analyze',[g.data.data,cw,cw,mpp,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
     rows.push(describePeak(r,cw,cw,mpp,Math.max(3,Math.round(6/mpp)),false,'Görüntü (z'+z+', güncel)'));
   }catch(e){rows.push('Görüntü alınamadı')}
+  try{
+    say('Zemin türü okunuyor…');
+    const g=await geoAt(lat,lon);
+    rows.push('Zemin: '+g.lith+(g.age?' ('+g.age+')':'')+' · '+g.note);
+  }catch(e){rows.push('Zemin türü alınamadı')}
   try{
     say('Çekim tarihi okunuyor…');
     const c=await esriCapture(lat,lon);
@@ -3077,6 +3107,9 @@ async function runSelfTest(){
     if(!window.GeoTIFF)await loadScript('https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js');
     return !!window.GeoTIFF;
   });
+  await timed('Zemin türü (Macrostrat)',async()=>{
+    const g=await geoAt(c.lat,c.lng);return g.lith+' · '+g.note;
+  },'zemin bilgisi gösterilmez');
   await timed('Gerçek çekim tarihi (Esri metadata)',async()=>{
     const d=0.004,ext=[c.lng-d,c.lat-d,c.lng+d,c.lat+d].join(',');
     const u='https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/identify?f=json&geometry='+c.lng+','+c.lat+

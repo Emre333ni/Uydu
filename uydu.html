@@ -1907,7 +1907,7 @@ function describe(c){
 }
 const DIRS=['K–G','KD–GB','D–B','KB–GD'];
 const TARGETS={
-  mound:['Höyük / Tümülüs?','Yağmalı Tümülüs?','Yuvarlak Leke?','Tümülüs','Çöken Tümülüs','Yükselti','Geniş Leke'],
+  mound:['Büyük Höyük?','Höyük / Tümülüs?','Yağmalı Tümülüs?','Yuvarlak Leke?','Tümülüs','Çöken Tümülüs','Yükselti','Geniş Leke'],
   under:['Tünel Hattı','Kuyu Zinciri?','Çöküntü Hattı','Çöküntü','Çöken Tümülüs','Erken Eriyen İz','Geç Eriyen İz'],
   tomb:['Lahit / Gömü','Oda Mezar İzi','Yağmalı Tümülüs?','Çöken Tümülüs','Tümülüs','Höyük / Tümülüs?'],
   road:['Yol / Duvar Hattı?','Hendek Hattı','Tünel Hattı','Kuyu Zinciri?','Tarla Sınırı?']
@@ -1936,7 +1936,7 @@ function verdict(c,st,seenRatio,spanM,chain,snow,mpp){
   else if(c.dem){
     if(c.zL>0&&c.slope!=null&&c.slope>=8&&!c.crater)name='Doğal Tepe?';
     else if(c.zL>0&&c.crater)name='Çöken Tümülüs';
-    else if(c.zL>0)name=(el<1.6&&L>=20&&L<=200)?'Tümülüs':'Yükselti';
+    else if(c.zL>0)name=(el<1.6&&L>=20&&L<=200)?'Tümülüs':(el<1.8&&L>200&&L<=600&&c.slope!=null&&c.slope<8)?'Büyük Höyük?':'Yükselti';
     else name=(el>=3&&L>=60)?'Çöküntü Hattı':'Çöküntü';
   }
   else if(st.capped||(L>=0.6*spanM&&el>=6))name='Tarla Sınırı?';

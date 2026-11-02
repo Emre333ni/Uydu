@@ -207,7 +207,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <button id="bTilt" aria-label="Eğimi aç/kapat" hidden>⬍</button>
       <button id="bNorth" aria-label="Kuzeye döndür" hidden>⟲</button>
     </div>
-    <div id="msr" hidden><span id="msrT"></span><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
+    <div id="msr" hidden><span id="msrT"></span><button id="msrSaveL" aria-label="Çizgiyi kaydet" title="Çizgiyi kaydet">💾</button><button id="msrSaveA" aria-label="Alanı kaydet" title="Alanı kaydet">⬠</button><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
     <div id="cc" hidden><button id="ccPrev" aria-label="Önceki aday">‹</button><div id="ccBox"><div id="ccText"></div><div id="ccNav" hidden></div></div><button id="ccNext" aria-label="Sonraki aday">›</button></div>
   </div>
 
@@ -258,6 +258,10 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       </div>
 
       <label class="chk"><input type="checkbox" id="cSharp" checked> Yaklaşınca kontrastı artır (net görünsün)</label>
+      <label>Görüntü filtresi
+        <select id="cFilt"><option value="">Normal</option><option value="contrast">Kontrast / detay (toprak izi, çöküntü)</option><option value="negative">Negatif (ton farkı, ters renk)</option><option value="edge">Kenar vurgusu (düz hat, kare temel)</option></select>
+      </label>
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="fEdge" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feConvolveMatrix order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" divisor="1" bias="0.5" preserveAlpha="true"/><feComponentTransfer><feFuncR type="linear" slope="3.2" intercept="-1.1"/><feFuncG type="linear" slope="3.2" intercept="-1.1"/><feFuncB type="linear" slope="3.2" intercept="-1.1"/></feComponentTransfer></filter></svg>
       <div class="btns"><button id="bOff">Bu bölgeyi çevrimdışı kaydet</button><button id="bOffClr">Kayıtlıyı sil</button></div>
       <div class="hint" id="offInfo" style="margin-top:0"></div>
       <button id="bBest" style="width:100%;margin:8px 0">Bu konumda en net görüntüyü bul</button>
@@ -363,6 +367,8 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <button id="bKml">KML (Google Earth)</button>
         <button id="bReport">Müze bildirim raporu</button>
       </div>
+      <div class="btns"><button id="bImp">İçe aktar (GeoJSON / KML)</button></div>
+      <input id="impFile" type="file" hidden>
       <div id="noteList"></div>
       <p class="hint">Notlar yalnızca bu cihazda saklanır. GeoJSON/KML ile yedekleyin.</p>
     </div>
@@ -1240,7 +1246,7 @@ function saveNotes(){
   catch(e){setMsg('Kayıt alanı doldu; yeni not tarayıcıya kaydedilemedi. Notları indirip eskileri silmeyi deneyin.')}
 }
 function renderNotes(){
-  noteLayer.clearLayers();
+  noteLayer.clearLayers();if(typeof renderShapes==='function'&&shapeLayer)renderShapes();
   const list=$('noteList');list.innerHTML='';
   for(const n of notes){
     const mk=L.marker([n.lat,n.lon],{icon:pinIcon});
@@ -1371,23 +1377,29 @@ let lastCands=[];   // {lat,lon,text,name,conf,size,why,thumb,meta}
 function savedActive(){return curProj().cands.filter(c=>c.status!=='elendi')}
 $('bExport').onclick=()=>{
   const sc=savedActive();
-  if(!notes.length&&!sc.length){setMsg('İndirilecek not ya da kayıtlı aday yok.');return}
+  if(!notes.length&&!sc.length&&!getShapes().length){setMsg('İndirilecek not, aday, çizgi ya da alan yok.');return}
   const f=[];
   notes.forEach(n=>f.push({type:'Feature',geometry:{type:'Point',coordinates:[n.lon,n.lat]},
     properties:{tur:'not',not:n.text,zaman:new Date(n.t).toISOString(),fotograf_var:!!n.photo}}));
   sc.forEach(c=>f.push({type:'Feature',geometry:{type:'Point',coordinates:[c.lon,c.lat]},
     properties:{tur:'aday',yorum:c.name,guven:c.conf,boyut:c.size,durum:STAT[c.status],aciklama:c.why,yontem:c.meta||''}}));
+  getShapes().forEach(x=>{const I=shapeInfo(x),cc=x.pts.map(a=>[a[1],a[0]]);
+    if(x.type==='poly')f.push({type:'Feature',geometry:{type:'Polygon',coordinates:[[...cc,cc[0]]]},properties:{tur:'alan',ad:x.name||'',cevre_m:Math.round(I.len),alan_m2:Math.round(I.A)}});
+    else f.push({type:'Feature',geometry:{type:'LineString',coordinates:cc},properties:{tur:'cizgi',ad:x.name||'',uzunluk_m:Math.round(I.len),yon_derece:Math.round(I.br),yon:axisName(I.br)}})});
   download('bozkurt-'+curProj().name.replace(/\W+/g,'_')+'.geojson',JSON.stringify({type:'FeatureCollection',features:f},null,1),'application/geo+json');
 };
 
 $('bKml').onclick=()=>{
   const sc=savedActive();
-  if(!notes.length&&!lastCands.length&&!sc.length){setMsg('Dışa aktarılacak not ya da aday yok.');return}
+  if(!notes.length&&!lastCands.length&&!sc.length&&!getShapes().length){setMsg('Dışa aktarılacak not, aday, çizgi ya da alan yok.');return}
   const pm=(name,desc,lat,lon)=>'<Placemark><name>'+esc(name)+'</name><description>'+esc(desc)+'</description><Point><coordinates>'+lon.toFixed(7)+','+lat.toFixed(7)+',0</coordinates></Point></Placemark>';
   let k='<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Bozkurt Uydu · '+esc(curProj().name)+'</name>';
   notes.forEach((n,i)=>{k+=pm('Not '+(i+1),(n.text||'')+' ('+new Date(n.t).toLocaleString('tr-TR')+')',n.lat,n.lon)});
   sc.forEach((c,i)=>{k+=pm('['+STAT[c.status]+'] '+c.name,c.size+' · güven '+c.conf+' · '+c.why,c.lat,c.lon)});
   lastCands.forEach((c,i)=>{k+=pm('Aday '+(i+1),c.text,c.lat,c.lon)});
+  getShapes().forEach((x,i)=>{const I=shapeInfo(x),cs=x.pts.map(a=>a[1].toFixed(7)+','+a[0].toFixed(7)+',0').join(' ');
+    if(x.type==='poly')k+='<Placemark><name>'+esc(x.name||'Alan '+(i+1))+'</name><description>'+esc('çevre '+fmtM(I.len)+' · alan '+Math.round(I.A)+' m²')+'</description><Polygon><outerBoundaryIs><LinearRing><coordinates>'+cs+' '+x.pts[0][1].toFixed(7)+','+x.pts[0][0].toFixed(7)+',0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>';
+    else k+='<Placemark><name>'+esc(x.name||'Çizgi '+(i+1))+'</name><description>'+esc('uzunluk '+fmtM(I.len)+' · '+axisName(I.br)+' '+Math.round(I.br)+'°')+'</description><LineString><coordinates>'+cs+'</coordinates></LineString></Placemark>'});
   k+='</Document></kml>';
   download('bozkurt-'+stamp()+'.kml',k,'application/vnd.google-earth.kml+xml');
 };
@@ -1466,6 +1478,7 @@ function capZoom(){
 map.on('zoomend',applyFocus);
 map.on('moveend',()=>scheduleProbe());
 $('cSharp').onchange=applyFocus;
+$('cFilt').onchange=applyFocus;
 
 async function loadImg(url){
   const cu=await cacheGet(url);
@@ -2021,7 +2034,9 @@ function applyFocus(){
   const f=overlay?+$('aFocus').value/100:0;
   const fo=f>0?'brightness('+(1-0.55*f).toFixed(2)+') saturate('+(1-0.5*f).toFixed(2)+')':'';
   const over=['A','B'].some(k=>layer[k]&&map.getZoom()>layer[k].options.maxNativeZoom+0.01);
-  const flt=((over&&$('cSharp').checked)?'contrast(1.14) saturate(1.06) ':'')+fo;
+  const fm=$('cFilt').value;
+  const fx=fm==='contrast'?'contrast(1.55) saturate(1.3) brightness(1.05) ':fm==='negative'?'invert(1) contrast(1.2) ':fm==='edge'?'url(#fEdge) ':'';
+  const flt=fx+((over&&$('cSharp').checked)?'contrast(1.14) saturate(1.06) ':'')+fo;
   map.getPane('paneA').style.filter=flt.trim();
   map.getPane('paneB').style.filter=flt.trim();
   pO.style.filter=overlay?'drop-shadow(0 0 2px rgba(255,190,60,.95))':'';
@@ -3118,8 +3133,8 @@ function msrRender(){
   let t=msrPts.length+' nokta';
   if(msrPts.length>1){
     t+=' · '+fmtM(len);
-    const a=msrPts[msrPts.length-2],b=msrPts[msrPts.length-1],br=brg(a,b);
-    t+=' · yön '+CARDN[Math.round(br/45)%8]+' '+Math.round(br)+'°';
+    const br=brg(msrPts[0],msrPts[msrPts.length-1]);
+    t+=' · '+axisName(br)+' ('+Math.round(br)+'° ↔ '+Math.round((br+180)%360)+'°)';
   }
   if(msrPts.length>2){
     const lat0=msrPts[0].lat,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
@@ -3142,6 +3157,111 @@ map.on('click',e=>{if(msrOn&&!is3d){msrPts.push(e.latlng);msrRender()}});
 $('bMsr').onclick=()=>msrToggle(!msrOn);
 $('msrUndo').onclick=()=>{msrPts.pop();msrRender()};
 $('msrClr').onclick=()=>msrToggle(false);
+
+/* ---------- Kayıtlı çizgi / alan ---------- */
+function axisName(br){const a=((br%180)+180)%180;return ['K–G','KD–GB','D–B','GD–KB'][Math.round(a/45)%4]}
+var shapeLayer=null;
+function getShapes(){const P=curProj();if(!P.shapes)P.shapes=[];return P.shapes}
+function shapeInfo(sh){
+  const pts=sh.pts.map(q=>L.latLng(q[0],q[1]));
+  let len=0;for(let i=1;i<pts.length;i++)len+=pts[i-1].distanceTo(pts[i]);
+  if(sh.type==='poly'&&pts.length>2)len+=pts[pts.length-1].distanceTo(pts[0]);
+  const br=pts.length>1?brg(pts[0],pts[pts.length-1]):0;
+  let A=0;
+  if(sh.type==='poly'&&pts.length>2){
+    const kx=111320*Math.cos(pts[0].lat*Math.PI/180),ky=110540;
+    for(let i=0;i<pts.length;i++){const p1=pts[i],p2=pts[(i+1)%pts.length];A+=(p1.lng*kx)*(p2.lat*ky)-(p2.lng*kx)*(p1.lat*ky)}
+    A=Math.abs(A)/2;
+  }
+  return {pts,len,br,A};
+}
+function renderShapes(){
+  if(!shapeLayer)shapeLayer=L.layerGroup().addTo(map);
+  shapeLayer.clearLayers();
+  for(const sh of getShapes()){
+    if(!sh.pts||sh.pts.length<2)continue;
+    const I=shapeInfo(sh),col=sh.type==='poly'?'#ffb347':'#ff7ab8';
+    const g=sh.type==='poly'?L.polygon(I.pts,{color:col,weight:2,fillOpacity:0.15}):L.polyline(I.pts,{color:col,weight:3,dashArray:'6 4'});
+    const box=document.createElement('div');box.className='popup';
+    const p=document.createElement('p');p.style.whiteSpace='pre-line';
+    p.textContent=(sh.name||(sh.type==='poly'?'Alan':'Çizgi'))+'\n'+(sh.type==='poly'?'çevre ':'uzunluk ')+fmtM(I.len)+
+      (sh.type==='poly'?'\nalan '+(I.A>=10000?(I.A/10000).toFixed(2)+' ha':Math.round(I.A)+' m²'):'\nyön '+axisName(I.br)+' ('+Math.round(I.br)+'° ↔ '+Math.round((I.br+180)%360)+'°)');
+    const d=document.createElement('button');d.textContent='Sil';
+    d.onclick=()=>{if(confirm('Silinsin mi?')){const P=curProj();P.shapes=getShapes().filter(x=>x.id!==sh.id);saveNotes();renderShapes();map.closePopup()}};
+    box.appendChild(p);box.appendChild(d);g.bindPopup(box);
+    shapeLayer.addLayer(g);
+  }
+}
+function saveShape(type){
+  const need=type==='poly'?3:2;
+  if(msrPts.length<need){setMsg(type==='poly'?'Alan için en az 3 nokta koy.':'Çizgi için en az 2 nokta koy.');return}
+  const nm=prompt('Ad (isteğe bağlı)','')||'';
+  getShapes().push({id:Date.now()+''+Math.floor(Math.random()*1000),type,name:nm.trim(),pts:msrPts.map(q=>[+q.lat.toFixed(7),+q.lng.toFixed(7)]),t:Date.now()});
+  saveNotes();renderShapes();setMsg((type==='poly'?'Alan':'Çizgi')+' kaydedildi. Notlar sekmesinden GeoJSON/KML ile indirilir.');
+}
+$('msrSaveL').onclick=()=>saveShape('line');
+$('msrSaveA').onclick=()=>saveShape('poly');
+renderShapes();
+
+/* ---------- İçe aktar (GeoJSON / KML) ---------- */
+function importText(txt,fname){
+  let pts=[],shapes=[];
+  const addGeom=(g,name,desc)=>{
+    if(!g)return;
+    const T=g.type,C=g.coordinates;
+    if(T==='GeometryCollection'){(g.geometries||[]).forEach(x=>addGeom(x,name,desc));return}
+    const ll=c=>[+c[1],+c[0]];
+    if(T==='Point'&&C)pts.push({lat:+C[1],lon:+C[0],text:desc||name||''});
+    else if(T==='MultiPoint')C.forEach(c=>pts.push({lat:+c[1],lon:+c[0],text:desc||name||''}));
+    else if(T==='LineString')shapes.push({type:'line',name:name||desc||'',pts:C.map(ll)});
+    else if(T==='MultiLineString')C.forEach(l=>shapes.push({type:'line',name:name||desc||'',pts:l.map(ll)}));
+    else if(T==='Polygon'&&C[0])shapes.push({type:'poly',name:name||desc||'',pts:C[0].slice(0,-1).map(ll)});
+    else if(T==='MultiPolygon')C.forEach(pl=>{if(pl[0])shapes.push({type:'poly',name:name||desc||'',pts:pl[0].slice(0,-1).map(ll)})});
+  };
+  const t=txt.trim();
+  if(t[0]==='{'||t[0]==='['){
+    const j=JSON.parse(t);
+    const feats=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:[{type:'Feature',geometry:j,properties:{}}];
+    feats.forEach(f=>{const pr=f.properties||{};addGeom(f.geometry,pr.ad||pr.name||pr.yorum||'',pr.not||pr.aciklama||pr.description||'')});
+  }else{
+    const doc=new DOMParser().parseFromString(t,'application/xml');
+    if(doc.getElementsByTagName('parsererror').length)throw new Error('KML okunamadı');
+    const co=s=>s.trim().split(/\s+/).map(x=>x.split(',').map(Number)).filter(a=>a.length>=2&&isFinite(a[0])&&isFinite(a[1]));
+    const tx=(el,n)=>{const e=el.getElementsByTagName(n)[0];return e?e.textContent.trim():''};
+    [...doc.getElementsByTagName('Placemark')].forEach(pm=>{
+      const nm=tx(pm,'name'),ds=tx(pm,'description');
+      [...pm.getElementsByTagName('Point')].forEach(e=>{const c=co(tx(e,'coordinates'))[0];if(c)pts.push({lat:c[1],lon:c[0],text:ds||nm})});
+      [...pm.getElementsByTagName('LineString')].forEach(e=>{const c=co(tx(e,'coordinates'));if(c.length>1)shapes.push({type:'line',name:nm||ds,pts:c.map(a=>[a[1],a[0]])})});
+      [...pm.getElementsByTagName('Polygon')].forEach(e=>{const ob=e.getElementsByTagName('outerBoundaryIs')[0]||e;let c=co(tx(ob,'coordinates'));if(c.length>3)c=c.slice(0,-1);if(c.length>2)shapes.push({type:'poly',name:nm||ds,pts:c.map(a=>[a[1],a[0]])})});
+    });
+  }
+  const ok=a=>isFinite(a[0])&&isFinite(a[1])&&Math.abs(a[0])<=90&&Math.abs(a[1])<=180;
+  pts=pts.filter(p=>ok([p.lat,p.lon]));shapes=shapes.filter(x=>x.pts.length>=2&&x.pts.every(ok));
+  let nn=0,ns=0;
+  for(const p of pts){
+    if(notes.some(n=>Math.abs(n.lat-p.lat)<1e-6&&Math.abs(n.lon-p.lon)<1e-6&&(n.text||'')===p.text))continue;
+    notes.push({id:Date.now()+''+Math.floor(Math.random()*100000),lat:p.lat,lon:p.lon,text:p.text,photo:null,t:Date.now()});nn++;
+  }
+  const have=getShapes();
+  for(const x of shapes){
+    const key=JSON.stringify(x.pts);
+    if(have.some(h=>JSON.stringify(h.pts)===key))continue;
+    have.push({id:Date.now()+''+Math.floor(Math.random()*100000),type:x.type,name:x.name,pts:x.pts.map(a=>[+a[0].toFixed(7),+a[1].toFixed(7)]),t:Date.now()});ns++;
+  }
+  saveNotes();renderNotes();renderShapes();
+  const all=[...pts.map(p=>L.latLng(p.lat,p.lon)),...shapes.flatMap(x=>x.pts.map(a=>L.latLng(a[0],a[1])))];
+  if(all.length)map.fitBounds(L.latLngBounds(all),{maxZoom:18,padding:[30,30]});
+  return {nn,ns,total:pts.length+shapes.length};
+}
+$('bImp').onclick=()=>$('impFile').click();
+$('impFile').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';
+  if(!f)return;
+  try{
+    const r=importText(await f.text(),f.name);
+    setMsg(r.total?(r.nn+' nokta ve '+r.ns+' çizgi/alan eklendi'+(r.total>r.nn+r.ns?' ('+(r.total-r.nn-r.ns)+' tanesi zaten vardı)':'')+'.'):'Dosyada nokta, çizgi veya alan bulunamadı.');
+  }catch(err){setMsg('Dosya okunamadı: '+(err&&err.message?err.message:'bilinmeyen biçim'))}
+};
 
 /* ---------- Kendi fotoğrafını analiz et ---------- */
 let ph=null;

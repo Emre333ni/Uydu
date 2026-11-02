@@ -377,6 +377,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <p class="hint" style="margin-top:0">
         <b>Tümülüs / Çöken Tümülüs:</b> yuvarlak kubbe, ortası çökükse “çöken”.<br>
         <b>Çöküntü Hattı:</b> zincirleme çukurlar (galeri, tünel çökmesi).<br>
+        <b>Kuyu Zinciri?:</b> en az 4 çukur, düz hatta, eşit aralıklı (havalandırma bacası, kanat kuyusu olabilir).<br>
         <b>Çöküntü:</b> tek çukur. <b>Yükselti:</b> yuvarlak olmayan tümsek.<br>
         <b>Oda Mezar İzi:</b> kare/dikdörtgen leke. <b>Lahit / Gömü:</b> küçük kompakt leke.<br>
         <b>Tünel Hattı / Hendek Hattı:</b> uzun düz iz (bitki zayıfsa tünel, canlıysa hendek).<br>
@@ -814,7 +815,9 @@ const CORE=(()=>{
         }
         if(!best)break;
         const bear=(((Math.atan2(best.ux,-best.uy)*180/Math.PI)%180)+180)%180;
-        out.push({idx:best.mem.map(m=>m.k),bearing:bear,spacing:best.med*mpp,len:(best.mem[best.mem.length-1].t-best.mem[0].t)*mpp,n:best.mem.length});
+        const gs=[];for(let i=1;i<best.mem.length;i++)gs.push(best.mem[i].t-best.mem[i-1].t);
+        const gm=gs.reduce((a,b)=>a+b,0)/gs.length,cv=gm>0?Math.sqrt(gs.reduce((a,b)=>a+(b-gm)*(b-gm),0)/gs.length)/gm:null;
+        out.push({idx:best.mem.map(m=>m.k),bearing:bear,cv,spacing:best.med*mpp,len:(best.mem[best.mem.length-1].t-best.mem[0].t)*mpp,n:best.mem.length});
         const used=new Set(best.mem.map(m=>m.k));
         pool=pool.filter(k=>!used.has(k));
       }
@@ -1905,9 +1908,9 @@ function describe(c){
 const DIRS=['K–G','KD–GB','D–B','KB–GD'];
 const TARGETS={
   mound:['Höyük / Tümülüs?','Yağmalı Tümülüs?','Yuvarlak Leke?','Tümülüs','Çöken Tümülüs','Yükselti','Geniş Leke'],
-  under:['Tünel Hattı','Çöküntü Hattı','Çöküntü','Çöken Tümülüs','Erken Eriyen İz','Geç Eriyen İz'],
+  under:['Tünel Hattı','Kuyu Zinciri?','Çöküntü Hattı','Çöküntü','Çöken Tümülüs','Erken Eriyen İz','Geç Eriyen İz'],
   tomb:['Lahit / Gömü','Oda Mezar İzi','Yağmalı Tümülüs?','Çöken Tümülüs','Tümülüs','Höyük / Tümülüs?'],
-  road:['Yol / Duvar Hattı?','Hendek Hattı','Tünel Hattı','Tarla Sınırı?']
+  road:['Yol / Duvar Hattı?','Hendek Hattı','Tünel Hattı','Kuyu Zinciri?','Tarla Sınırı?']
 };
 const matchTarget=name=>{const t=$('aTarget')?$('aTarget').value:'all';return t==='all'||(TARGETS[t]||[]).includes(name)};
 // Ortalama eğim (derece): adayın çevresindeki halkada. Doğal tepe/yamaç ile düz ovadaki tümsek ayrımı için
@@ -1929,7 +1932,7 @@ function verdict(c,st,seenRatio,spanM,chain,snow,mpp){
   let name;
   const vegDom=Math.abs(c.zE)>=Math.abs(c.zL);
   if(c.mound)name=(L>=12&&L<=250)?(c.pit?'Yağmalı Tümülüs?':'Höyük / Tümülüs?'):'Geniş Leke';
-  else if(chain)name='Çöküntü Hattı';
+  else if(chain)name=(chain.n>=4&&chain.cv!=null&&chain.cv<=0.3&&chain.spacing>=12&&chain.spacing<=90)?'Kuyu Zinciri?':'Çöküntü Hattı';
   else if(c.dem){
     if(c.zL>0&&c.slope!=null&&c.slope>=8&&!c.crater)name='Doğal Tepe?';
     else if(c.zL>0&&c.crater)name='Çöken Tümülüs';
@@ -1956,10 +1959,10 @@ function verdict(c,st,seenRatio,spanM,chain,snow,mpp){
   const photo=mpp!=null&&mpp<0.05;                       // el fotoğrafı: ölçek santimetre
   const tree=imgMode&&!snow&&c.zL<-0.08&&c.zE>0.05;      // koyu ve yeşil leke: ağaç / çalı
   const proven=photo||(seenRatio!=null&&seenRatio>=0.6); // tek görüntüde kesin etiket verilmez
-  const SPECIFIC=['Lahit / Gömü','Oda Mezar İzi','Tünel Hattı','Hendek Hattı','Çöküntü Hattı','Höyük / Tümülüs?','Yağmalı Tümülüs?'];
+  const SPECIFIC=['Lahit / Gömü','Oda Mezar İzi','Tünel Hattı','Hendek Hattı','Çöküntü Hattı','Kuyu Zinciri?','Höyük / Tümülüs?','Yağmalı Tümülüs?'];
   if(imgMode&&tree&&name!=='Zayıf İz')name='Ağaç / Çalı?';
   else if(imgMode&&SPECIFIC.includes(name)){
-    if(name==='Çöküntü Hattı'&&chain&&chain.n<4)name='Zayıf İz';
+    if((name==='Çöküntü Hattı'||name==='Kuyu Zinciri?')&&chain&&chain.n<4)name='Zayıf İz';
     else if(mpp>0.5&&!photo)name='Zayıf İz';            // çözünürlük yetersiz: 2–3 m'lik şey seçilemez
     else if(!proven)name=(name==='Höyük / Tümülüs?'||name==='Yağmalı Tümülüs?')?'Yuvarlak Leke?':'Zayıf İz';
   }
@@ -2202,7 +2205,7 @@ function showResult(){
     let aligned=false;
     if(!V.round&&osmBear!=null&&st.L>=8&&!last.dem){
       aligned=angDiff(V.bear,osmBear)<9||angDiff(V.bear,(osmBear+90)%180)<9;
-      if(aligned){V.conf='düşük';if(['Tünel Hattı','Hendek Hattı','Yol / Duvar Hattı?','Çöküntü Hattı'].includes(V.name))V.name='Yol Hizası İz'}
+      if(aligned){V.conf='düşük';if(['Tünel Hattı','Hendek Hattı','Yol / Duvar Hattı?','Çöküntü Hattı'].includes(V.name)||V.name==='Kuyu Zinciri?')V.name='Yol Hizası İz'}
     }
     const dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
     const head='#'+(k+1)+' skor '+c.S.toFixed(1)+' · '+dirTxt+' · '+V.name+(aligned?' · yol hizası':'')+(en.center?' · merkez':'');

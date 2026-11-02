@@ -338,10 +338,12 @@ body.full #brand,body.full #top,body.full #panel{display:none}
         <input id="phFile" type="file" accept="image/*" hidden>
         <button id="bPreset" style="margin-bottom:8px">Hassas tarama ayarı (eşik 1.8, birleşik skor, OSM açık)</button>
         <button id="bAnalyze" class="pri">Bu görünümü analiz et</button>
+        <button id="bVerify">Adayları doğrula ve sırala</button>
         <button id="bSaveC">Adayları projeye kaydet</button>
         <button id="bClear">Temizle</button>
       </div>
       <div id="aRes"></div>
+      <div id="verRes"></div>
       <div id="candList"></div>
       <div class="btns"><button id="bTap">Dokun-incele: kapalı</button></div>
       <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
@@ -2189,7 +2191,7 @@ function showResult(){
   overlay=L.imageOverlay(overlayData.url,[[nw.lat,nw.lng],[se.lat,se.lng]],{pane:'paneO',opacity:+$('aOp').value/100,interactive:false}).addTo(map);
 
   candLayer.clearLayers();
-  const list=$('candList');list.innerHTML='';
+  const list=$('candList');list.innerHTML='';$('verRes').innerHTML='';
   const entries=buildEntries(res,mpp,thr,last.dem,pool=>{if(last.mode==='multi')enrichMulti(pool,thr)});
   lastCands=[];candData=[];
   if($('aTarget').value!=='all'){
@@ -2281,7 +2283,7 @@ function showResult(){
 function clearAnalysis(){
   if(overlay){map.removeLayer(overlay);overlay=null}
   candLayer.clearLayers();siteLayer.clearLayers();
-  $('candList').innerHTML='';$('aRes').textContent='';last=null;lastCands=[];
+  $('candList').innerHTML='';$('verRes').innerHTML='';$('aRes').textContent='';last=null;lastCands=[];
   scanLayer.clearLayers();$('scanList').innerHTML='';$('scanRes').textContent='';
   candData=[];selIdx=-1;overlayData=null;
   $('cc').hidden=true;$('stage').classList.remove('hascc');
@@ -2937,7 +2939,7 @@ async function crossCheck(lat,lon,thr,say){
     else rows.push('geçmiş görüntü yetersiz ('+got+')');
   }catch(e){rows.push('görüntü kontrolü alınamadı')}
   const conf=avail<2?'belirsiz':n>=3?'yüksek':n===2?'orta':'düşük';
-  return {n,avail,conf,txt:'Çapraz kontrol: '+rows.join(' · ')+'\n'+n+'/'+avail+' kaynakta var · tutarlılık: '+conf+'\n(Bağımsız kaynakların uyumudur; gerçek isabet oranı değildir.)'};
+  return {n,avail,conf,rows,txt:'Çapraz kontrol: '+rows.join(' · ')+'\n'+n+'/'+avail+' kaynakta var · tutarlılık: '+conf+'\n(Bağımsız kaynakların uyumudur; gerçek isabet oranı değildir.)'};
 }
 function addCrossBtn(box,ll,rec,mk){
   const out=document.createElement('p');out.style.whiteSpace='pre-line';out.style.fontSize='12px';
@@ -3001,36 +3003,41 @@ async function inspectPoint(lat,lon,say){
     for(let y=Math.max(0,cy-rad);y<=Math.min(h-1,cy+rad);y++)for(let x=Math.max(0,cx-rad);x<=Math.min(w-1,cx+rad);x++){
       if((x-cx)*(x-cx)+(y-cy)*(y-cy)>rad*rad)continue;const v=S[y*w+x];if(v>m){m=v;mx=x;my=y}}
     return {m,x:mx,y:my}};
+  const why=[];
   const describePeak=(r,w,h,mpp,rad,isDem,label)=>{
     if(r.flat)return label+': veri düz/boş';
     const pk=peakAt(r.S,w,h,rad),i=pk.y*w+pk.x;
     const top=Math.round((1-pct(r.S,w,h,pk.m))*100);
-    if(pk.m<thr*0.5)return label+': skor '+pk.m.toFixed(1)+' · çevresinden belirgin fark yok';
+    if(pk.m<thr*0.5){why.push(label.split(' ')[0]+' çevresinden farksız');return label+': skor '+pk.m.toFixed(1)+' · çevresinden belirgin fark yok'}
+    if(pk.m<thr)why.push(label.split(' ')[0]+' skoru '+pk.m.toFixed(1)+', eşik '+thr.toFixed(1)+' (eşiği düşürürsen çıkar)');
     const c={x:pk.x,y:pk.y,S:pk.m,zE:r.zE?r.zE[i]:0,zL:r.zL?r.zL[i]:0,coh:r.coh?r.coh[i]:0,theta:r.theta?r.theta[i]:0,dem:!!isDem,crater:r.crater?r.crater[i]:0};
     const st=CORE.blobStats(r.S,w,h,pk.x,pk.y,Math.max(thr*0.35,pk.m*0.5),mpp);
     const V=verdict(c,st,null,Math.min(w,h)*mpp,null,false,isDem?null:mpp);
+    if(pk.m>=thr&&V.name==='Zayıf İz')why.push(label.split(' ')[0]+': iz var ama etiket için kanıt yetmiyor (küçük, tek görüntü veya düşük çözünürlük)');
     return label+': skor '+pk.m.toFixed(1)+' · bölgenin ilk %'+Math.max(1,top)+' · '+V.name+' · '+V.size+' · güven '+V.conf;
   };
   // yükselti
   try{
     say('Yükselti ölçülüyor…');
     const zd=15,cw=384,pc=map.project(ll,zd),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,zd);
-    const g=await grabTiles(DEM_URL,null,zd,x0,y0,cw,cw);
+    let g=await grabTiles(DEM_URL,null,zd,x0,y0,cw,cw);
+    if(g.error){await sleep(600);g=await grabTiles(DEM_URL,null,zd,x0,y0,cw,cw)}
     if(g.error)throw new Error(g.error);
     const r=await coreAsync('analyzeDem',[demElev(g.data,cw,cw),cw,cw,mpp,{bgMeters:120}]);
     rows.push(describePeak(r,cw,cw,mpp,Math.max(4,Math.round(30/mpp)),true,'Yükselti (~30 m)'));
-  }catch(e){rows.push('Yükselti alınamadı')}
+  }catch(e){rows.push('Yükselti alınamadı ('+String(e&&e.message||e).slice(0,40)+')')}
   // güncel uydu
   try{
     say('Uydu görüntüsü ölçülüyor…');
     let z=18;const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});
-    if(t===null)throw new Error('ağ');if(!t)z=17;
+    if(t===null)throw new Error('ağ yok / zaman aşımı');if(!t)z=17;
     const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2),mpp=mppAt(lat,z);
-    const g=await grabTiles(LAYERS.esri.url,'abc',z,x0,y0,cw,cw);
+    let g=await grabTiles(LAYERS.esri.url,'abc',z,x0,y0,cw,cw);
+    if(g.error){await sleep(600);g=await grabTiles(LAYERS.esri.url,'abc',z,x0,y0,cw,cw)}
     if(g.error)throw new Error(g.error);
     const r=await coreAsync('analyze',[g.data.data,cw,cw,mpp,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
     rows.push(describePeak(r,cw,cw,mpp,Math.max(3,Math.round(6/mpp)),false,'Görüntü (z'+z+', güncel)'));
-  }catch(e){rows.push('Görüntü alınamadı')}
+  }catch(e){rows.push('Görüntü alınamadı ('+String(e&&e.message||e).slice(0,40)+')')}
   try{
     say('Zemin türü okunuyor…');
     const g=await geoAt(lat,lon);
@@ -3041,6 +3048,17 @@ async function inspectPoint(lat,lon,say){
     const c=await esriCapture(lat,lon);
     rows.push('Çekim tarihi: '+c.date+' ('+c.season+')'+(c.res?' · '+c.res+' m':''));
   }catch(e){rows.push('Çekim tarihi okunamadı')}
+  try{
+    if(last&&last.mask&&last.z!=null){
+      const pt=map.project(ll,last.z),px=Math.round(pt.x-last.x0),py=Math.round(pt.y-last.y0);
+      if(px>=0&&py>=0&&px<last.cw&&py<last.ch){
+        let hit=false;
+        for(let dy=-3;dy<=3&&!hit;dy++)for(let dx=-3;dx<=3;dx++){const x=px+dx,y=py+dy;if(x>=0&&y>=0&&x<last.cw&&y<last.ch&&last.mask[y*last.cw+x]){hit=true;break}}
+        if(hit)why.push('yol, bina veya yerleşim hattında (OSM maskesi), son analizde elendi');
+      }
+    }
+  }catch(e){}
+  if(why.length)rows.push('Neden aday değil: '+why.join(' · '));
   return rows.join('\n')+'\nSkor, çevresine göre farktır; yer altı kanıtı değildir.';
 }
 function tapToggle(on){
@@ -3155,6 +3173,45 @@ async function runSelfTest(){
   btn.disabled=false;
 }
 $('bSelf').onclick=runSelfTest;
+
+/* ---------- Adayları doğrula ve sırala: bağımsız kanıtları toplar ---------- */
+var verBusy=false,verStop=false;
+async function runVerify(){
+  const btn=$('bVerify');
+  if(verBusy){verStop=true;return}
+  if(!candData.length){setMsg('Önce bir analiz yap.');return}
+  verBusy=true;verStop=false;btn.textContent='Durdur';
+  const out=$('verRes');out.innerHTML='';
+  const N=Math.min(6,candData.length),res=[];
+  try{
+    for(let k=0;k<N&&!verStop;k++){
+      const d=candData[k];
+      const say=t=>setMsg('Doğrulama '+(k+1)+'/'+N+': '+t);
+      let cc=null,gz=null;
+      try{cc=await crossCheck(d.ll.lat,d.ll.lng,Math.max(2,+$('aThr').value),say)}catch(e){}
+      try{gz=await geoAt(d.ll.lat,d.ll.lng)}catch(e){}
+      let sc=cc?cc.n:0;const parts=[];
+      if(cc)cc.rows.forEach(r=>parts.push(r.replace(/\s[\d.]+$/,'')));else parts.push('çapraz kontrol alınamadı');
+      if(last&&last.mode==='multi'&&d.c.N){const ok=d.c.seen/d.c.N>=0.6;if(ok)sc++;parts.push('tarih '+d.c.seen+'/'+d.c.N+(ok?' ✓':' ✗'))}
+      let nd=null;(last&&last.siteList||[]).concat(knownSites).forEach(x=>{const t=d.ll.distanceTo([x.lat,x.lon]);if(nd==null||t<nd)nd=t});
+      if(nd!=null&&nd<=150){sc++;parts.push('kayıtlı alan '+Math.round(nd)+' m ✓')}
+      if(gz)parts.push('zemin: '+gz.kind);
+      res.push({k,sc,parts,name:d.V.name});
+      res.sort((a,b)=>b.sc-a.sc||a.k-b.k);
+      out.innerHTML='';
+      const h=document.createElement('p');h.className='hint';h.textContent='Kanıt: bağımsız kaynakların uyumu (en çok 5). Gerçek isabet oranı değildir.';out.appendChild(h);
+      res.forEach(r=>{
+        const b=document.createElement('button');
+        b.innerHTML='<b>#'+(r.k+1)+' · kanıt '+r.sc+'/5 · '+esc(r.name)+'</b><br><span style="color:#8b9aa8">'+esc(r.parts.join(' · '))+'</span>';
+        b.onclick=()=>{selectCand(r.k,true);if(!is3d&&candData[r.k].mk)candData[r.k].mk.openPopup()};
+        out.appendChild(b);
+      });
+    }
+    setMsg(verStop?'Doğrulama durduruldu.':'');
+  }catch(e){setMsg('Doğrulama başarısız: '+(e&&e.message||e))}
+  verBusy=false;verStop=false;btn.textContent='Adayları doğrula ve sırala';
+}
+$('bVerify').onclick=runVerify;
 
 /* ---------- Ölçüm aracı ---------- */
 let msrOn=false,msrPts=[];

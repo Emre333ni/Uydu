@@ -2736,52 +2736,60 @@ async function runTune(){
     if(!knownSites.length)await loadKnown();
     if(knownSites.length<6){setMsg('Ayarlama için en az 6 bilinen alan gerekir. Haritayı kayıtlı alanların bol olduğu bir bölgeye getirip tekrar deneyin.');return}
     const cen=map.getCenter();
-    const sites=knownSites.slice().sort((a,b)=>cen.distanceTo([a.lat,a.lon])-cen.distanceTo([b.lat,b.lon])).slice(0,24);
+    const sites=knownSites.slice().sort((a,b)=>cen.distanceTo([a.lat,a.lon])-cen.distanceTo([b.lat,b.lon])).slice(0,40);
     const cells=[];const zd=15,dw=512,dh=512;
     let k=0;
     for(const st of sites){
       k++;setMsg('Veri toplanıyor '+k+'/'+sites.length+'…');await sleep(10);
+      const sidx=k;
       for(const [kind,dx] of [['site',0],['ctrl',0.009],['ctrl',-0.009]]){
         try{
           const lat=st.lat,lon=st.lon+dx,c=map.project(L.latLng(lat,lon),zd);
           const g=await grabTiles(DEM_URL,null,zd,Math.round(c.x-dw/2),Math.round(c.y-dh/2),dw,dh);
           if(g.error)continue;
-          cells.push({kind,el:demElev(g.data,dw,dh),mpd:mppAt(lat,zd)});
+          cells.push({kind,sidx,el:demElev(g.data,dw,dh),mpd:mppAt(lat,zd)});
         }catch(e){}
       }
     }
     const nS=cells.filter(c=>c.kind==='site').length,nC=cells.filter(c=>c.kind==='ctrl').length;
     if(nS<6||nC<6){setMsg('Yeterli veri alınamadı ('+nS+' alan, '+nC+' kontrol).');return}
     const BGS=[60,90,120,160,220],THR=[2,3,4],tab={};
+    // Çift numaralı alanlar ayar seçmek için, tek numaralılar bağımsız sınama için kullanılır
     for(const bg of BGS){
       setMsg('Ayarlar deneniyor: arka plan '+bg+' m…');
       for(const c of cells){
         const r=await coreAsync('analyzeDem',[c.el,dw,dh,c.mpd,{bgMeters:bg}]);
+        const grp=c.sidx%2===0?'tr':'te';
         for(const th of THR){
           let hit=false;
           if(!r.flat){
             const cs=CORE.pickCandidates(r,c.mpd,th,6);
             for(const q of cs){if(Math.hypot(q.x-dw/2,q.y-dh/2)*c.mpd<=150){hit=true;break}}
           }
-          const key=bg+'|'+th,t=tab[key]||(tab[key]={hs:0,hc:0});
-          if(hit){if(c.kind==='site')t.hs++;else t.hc++}
+          const key=bg+'|'+th,t=tab[key]||(tab[key]={trS:0,trC:0,teS:0,teC:0});
+          if(hit){if(c.kind==='site')t[grp+'S']++;else t[grp+'C']++}
         }
       }
     }
+    const cnt=(g,kd)=>cells.filter(c=>c.kind===kd&&(c.sidx%2===0?'tr':'te')===g).length;
+    const nTrS=cnt('tr','site'),nTrC=cnt('tr','ctrl'),nTeS=cnt('te','site'),nTeC=cnt('te','ctrl');
+    if(nTrS<3||nTeS<3){setMsg('Bağımsız sınama için yeterli alan yok ('+nS+' alan). Kayıtlı alanı daha çok olan bir bölgede deneyin.');return}
     let best=null;const lines=[];
     for(const bg of BGS)for(const th of THR){
-      const t=tab[bg+'|'+th],d=t.hs/nS-t.hc/nC;
-      lines.push({bg,th,d,hs:t.hs,hc:t.hc});
-      if(!best||d>best.d+1e-9)best={bg,th,d,hs:t.hs,hc:t.hc};
+      const t=tab[bg+'|'+th],d=t.trS/nTrS-t.trC/nTrC;
+      lines.push({bg,th,d,t});
+      if(!best||d>best.d+1e-9)best={bg,th,d,t};
     }
     lines.sort((a,b)=>b.d-a.d);
+    const bt=best.t,teD=bt.teS/nTeS-bt.teC/nTeC;
     let txt='Ayarlama: '+nS+' bilinen alan, '+nC+' rastgele yer (150 m içinde iz var mı)\n';
-    txt+=lines.slice(0,5).map(l=>'arka plan '+l.bg+' m · eşik '+l.th+': bilinen '+l.hs+'/'+nS+' · rastgele '+l.hc+'/'+nC).join('\n');
-    if(best.d>=0.08){
+    txt+=lines.slice(0,3).map(l=>'arka plan '+l.bg+' m · eşik '+l.th+': bilinen '+l.t.trS+'/'+nTrS+' · rastgele '+l.t.trC+'/'+nTrC).join('\n');
+    txt+='\nBağımsız sınama (ayara karışmamış alanlar, '+best.bg+' m · eşik '+best.th+'): bilinen '+bt.teS+'/'+nTeS+' · rastgele '+bt.teC+'/'+nTeC;
+    if(best.d>=0.08&&teD>0){
       try{localStorage.setItem('uydu-tune',JSON.stringify({bg:best.bg,thr:best.th,n:nS,t:Date.now()}))}catch(e){}
       if($('aSrc').value==='DEM'){$('aBg').value=best.bg;$('vBg').textContent=best.bg+' m'}
-      txt+='\nSeçilen: arka plan '+best.bg+' m (yükselti modunda uygulanır). Önerilen eşik: '+best.th+'.';
-    }else txt+='\nBilinen alanlar rastgele yerlerden anlamlı ayrılmadı; ayar değiştirilmedi.';
+      txt+='\nSeçilen: arka plan '+best.bg+' m (yükselti modunda uygulanır). Önerilen eşik: '+best.th+'. Bağımsız sınamada da bilinen alanlar rastgeleden yüksek çıktı.';
+    }else txt+='\nAyar bağımsız sınamada tutmadı veya bilinen alanlar rastgeleden anlamlı ayrılmadı; ayar değiştirilmedi.';
     txt+='\nNot: Bu ayarlama yalnızca kayıtlı arkeolojik alanlara göre yapıldı (çoğu höyük, tümülüs ve kalıntı). Yer altı şehri, mezar ve yol için ayrı örnek verisi yok; onların ayarı değişmedi.';
     $('aRes').textContent=txt;setMsg('');
   }catch(e){setMsg('Ayarlama başarısız: '+e.message)}

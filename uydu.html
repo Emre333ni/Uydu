@@ -347,6 +347,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div id="candList"></div>
       <div class="btns"><button id="bTap">Dokun-incele: kapalı</button></div>
       <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
+      <div class="btns"><button id="bFan">Yelpaze tara (harita merkezinden, 12 yön)</button></div>
       <div id="scanRes" style="white-space:pre-line;font-size:12px"></div>
       <div id="scanList"></div>
       <p class="hint">Ön eleme aracıdır, tespit değil. Yerinde doğrulayın.</p>
@@ -3368,8 +3369,10 @@ $('impFile').onchange=async e=>{
 };
 
 /* ---------- Hat boyunca tara: çizilen hattı uzatıp koridoru tarar ---------- */
-async function runCorridor(pts0){
-  if(scanBusy)return;
+async function runCorridor(pts0,opts){
+  const collect=!!(opts&&opts.collect);
+  const prog=t=>{if(opts&&opts.prog)opts.prog(t);else $('scanRes').textContent=t};
+  if(scanBusy&&!collect)return;
   if(is3d){setMsg('Önce 2B görünüme dönün.');return}
   if(!pts0||pts0.length<2){setMsg('Hat için en az 2 nokta koy.');return}
   const EXT=1500,WD=100,WI=60,thr=Math.max(1.5,+$('aThr').value);
@@ -3390,9 +3393,12 @@ async function runCorridor(pts0){
   const at=t=>toLL(mx+ux*t,my+uy*t);
   const nI=Math.ceil((tmax-tmin)/180)+1;
   if(nI>45){setMsg('Hat çok uzun ('+Math.round((tmax-tmin)/1000)+' km). Noktaları birbirine yaklaştır.');return}
-  scanBusy=true;scanStop=false;
-  $('bScan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();$('scanList').innerHTML='';
-  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  let wl=null;
+  if(!collect){
+    scanBusy=true;scanStop=false;
+    $('bScan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();$('scanList').innerHTML='';
+    try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  }
   const found=[];let done=0,fails=0;
   const zd=15,CELL=512,nD=Math.ceil((tmax-tmin)/1400)+1,total=nD+nI;
   const inCorr=(ll,w)=>{const q=toM(ll),t=along(q);return Math.abs(perp(q))<=w&&t>=tmin&&t<=tmax};
@@ -3400,7 +3406,7 @@ async function runCorridor(pts0){
   try{
     // 1) yükselti
     for(let i=0;i<nD&&!scanStop;i++){
-      $('scanRes').textContent='Hat taranıyor (yükselti) '+(done+1)+'/'+total+' · '+found.length+' aday';
+      prog('Hat taranıyor (yükselti) '+(done+1)+'/'+total+' · '+found.length+' aday');
       try{
         const c=map.project(at(Math.min(tmax,tmin+i*1400)),zd),x0=Math.round(c.x-CELL/2),y0=Math.round(c.y-CELL/2);
         const g=await grabTiles(DEM_URL,null,zd,x0,y0,CELL,CELL);
@@ -3427,7 +3433,7 @@ async function runCorridor(pts0){
     try{const t0=await tileReal(LAYERS.esri.url,'abc',18,at((tmin+tmax)/2));if(t0===false)zi=17}catch(e){}
     const cw=512,mppI=mppAt(lat0,zi);
     for(let i=0;i<nI&&!scanStop;i++){
-      $('scanRes').textContent='Hat taranıyor (görüntü) '+(done+1)+'/'+total+' · '+found.length+' aday';
+      prog('Hat taranıyor (görüntü) '+(done+1)+'/'+total+' · '+found.length+' aday');
       try{
         const c=map.project(at(Math.min(tmax,tmin+i*180)),zi),x0=Math.round(c.x-cw/2),y0=Math.round(c.y-cw/2);
         const g=await grabTiles(LAYERS.esri.url,'abc',zi,x0,y0,cw,cw);
@@ -3453,6 +3459,7 @@ async function runCorridor(pts0){
     }
   }finally{if(wl)try{wl.release()}catch(e){}}
   found.sort((a,b)=>b.S-a.S);
+  if(collect)return {found,fails,lineBear};
   const kept=[];
   for(const f of found){
     if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<40))continue;
@@ -3469,6 +3476,46 @@ async function runCorridor(pts0){
   scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
 }
 $('msrCor').onclick=()=>{const pts=msrPts.slice();if(pts.length<2){setMsg('Hat için en az 2 nokta koy.');return}msrToggle(false);runCorridor(pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Hat taraması başarısız: '+e.message)})};
+
+/* ---------- Yelpaze taraması: bir noktadan 6 eksende (12 yön) hat taraması ---------- */
+async function runFan(origin){
+  if(scanBusy)return;
+  if(is3d){setMsg('Önce 2B görünüme dönün.');return}
+  const thr=Math.max(1.5,+$('aThr').value),BR=[0,30,60,90,120,150];
+  scanBusy=true;scanStop=false;
+  $('bScan').disabled=true;$('bFan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();$('scanList').innerHTML='';
+  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  const all=[],per=[];let fails=0;
+  const kx=111320*Math.cos(origin.lat*Math.PI/180),ky=110540;
+  const pt=(b,d)=>L.latLng(origin.lat+Math.cos(b*Math.PI/180)*d/ky,origin.lng+Math.sin(b*Math.PI/180)*d/kx);
+  try{
+    for(let k=0;k<BR.length&&!scanStop;k++){
+      const b=BR[k];
+      const r=await runCorridor([origin,pt(b,80)],{collect:true,prog:t=>{$('scanRes').textContent='Yelpaze '+(k+1)+'/'+BR.length+' · '+axisName(b)+' · '+t}});
+      if(!r)continue;
+      fails+=r.fails;
+      const ch=r.found.filter(f=>f.V&&f.V.name==='Hizalı Zincir?');
+      per.push({b,n:ch.length,max:ch.reduce((m,f)=>Math.max(m,parseInt(f.V.size.split('·')[1])||0),0)});
+      r.found.forEach(f=>{f.axis=b;all.push(f)});
+      scanLayer.addLayer(L.polyline([pt(b,-1560),pt(b,1560)],{color:'#ff7ab8',weight:1,dashArray:'4 8',opacity:.6,interactive:false}));
+    }
+  }finally{if(wl)try{wl.release()}catch(e){}}
+  all.sort((a,b)=>b.S-a.S);
+  const kept=[];
+  for(const f of all){
+    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<40))continue;
+    kept.push(f);if(kept.length>=30)break;
+  }
+  scanCands(kept,per.length,BR.length,fails,thr,false);
+  scanLayer.addLayer(L.circleMarker(origin,{radius:7,color:'#fff',weight:2,fillColor:'#ff7ab8',fillOpacity:1,interactive:false}));
+  const lines=per.map(x=>axisName(x.b)+' ('+x.b+'°): '+(x.n?x.n+' hizalı zincir':'yok')).join('\n');
+  const hits=per.filter(x=>x.n).length;
+  $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+'Yelpaze: '+per.length+'/'+BR.length+' eksen, 12 yön, '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+'\n'+lines+
+    '\nUyarı: 12 yön denendi, tesadüfen eşleşme şansı artar. '+(hits?(hits===1?'Tek eksende zincir çıkması anlamlı olabilir; ':hits+' eksende çıkması rastgeleliğe işaret eder; ')+'önce Çapraz kontrol yap.':'Hiçbir eksende hizalı zincir çıkmadı.')+'\nYol ve duvar maskesi yok.';
+  if(map.getZoom()>15)map.setZoom(15);
+  scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';
+}
+$('bFan').onclick=()=>runFan(map.getCenter()).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';setMsg('Yelpaze taraması başarısız: '+e.message)});
 
 /* ---------- Kendi fotoğrafını analiz et ---------- */
 let ph=null;

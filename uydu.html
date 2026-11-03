@@ -207,7 +207,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <button id="bTilt" aria-label="Eğimi aç/kapat" hidden>⬍</button>
       <button id="bNorth" aria-label="Kuzeye döndür" hidden>⟲</button>
     </div>
-    <div id="msr" hidden><span id="msrT"></span><button id="msrSaveL" aria-label="Çizgiyi kaydet" title="Çizgiyi kaydet">💾</button><button id="msrSaveA" aria-label="Alanı kaydet" title="Alanı kaydet">⬠</button><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
+    <div id="msr" hidden><span id="msrT"></span><button id="msrSaveL" aria-label="Çizgiyi kaydet" title="Çizgiyi kaydet">💾</button><button id="msrSaveA" aria-label="Alanı kaydet" title="Alanı kaydet">⬠</button><button id="msrCor" aria-label="Hat boyunca tara" title="Hat boyunca tara">🎯</button><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
     <div id="cc" hidden><button id="ccPrev" aria-label="Önceki aday">‹</button><div id="ccBox"><div id="ccText"></div><div id="ccNav" hidden></div></div><button id="ccNext" aria-label="Sonraki aday">›</button></div>
   </div>
 
@@ -2869,8 +2869,8 @@ function scanCands(kept,done,total,fails,thr,viewSmall){
   kept.forEach((f,k)=>{
     const V=f.V,dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
     const head='#'+(k+1)+' skor '+f.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
-    const sub=V.size+' · güven '+V.conf+' · bölge taraması';
-    const meta='Bölge taraması (yükselti) · kaynak: Terrarium yükselti (~30 m) · '+day+' · eşik '+thr.toFixed(1);
+    const sub=V.size+' · güven '+V.conf+(f.extra?' · '+f.extra:' · bölge taraması');
+    const meta=(f.corr?'Hat boyunca tarama':'Bölge taraması')+' ('+(f.src||'yükselti')+') · kaynak: '+(f.src==='görüntü'?'Esri görüntü (z18)':'Terrarium yükselti (~30 m)')+' · '+day+' · eşik '+thr.toFixed(1);
     const o={lat:f.lat,lon:f.lon,text:head+' · '+sub,name:V.name,conf:V.conf,size:V.size,why:head,thumb:null,meta};
     lastCands.push(o);
     const ll=L.latLng(f.lat,f.lon);
@@ -3260,7 +3260,7 @@ $('msrUndo').onclick=()=>{msrPts.pop();msrRender()};
 $('msrClr').onclick=()=>msrToggle(false);
 
 /* ---------- Kayıtlı çizgi / alan ---------- */
-function axisName(br){const a=((br%180)+180)%180;return ['K–G','KD–GB','D–B','GD–KB'][Math.round(a/45)%4]}
+function axisName(br){const a=((br%180)+180)%180;return ['K–G','KD–GB','D–B','KB–GD'][Math.round(a/45)%4]}
 var shapeLayer=null;
 function getShapes(){const P=curProj();if(!P.shapes)P.shapes=[];return P.shapes}
 function shapeInfo(sh){
@@ -3289,7 +3289,10 @@ function renderShapes(){
       (sh.type==='poly'?'\nalan '+(I.A>=10000?(I.A/10000).toFixed(2)+' ha':Math.round(I.A)+' m²'):'\nyön '+axisName(I.br)+' ('+Math.round(I.br)+'° ↔ '+Math.round((I.br+180)%360)+'°)');
     const d=document.createElement('button');d.textContent='Sil';
     d.onclick=()=>{if(confirm('Silinsin mi?')){const P=curProj();P.shapes=getShapes().filter(x=>x.id!==sh.id);saveNotes();renderShapes();map.closePopup()}};
-    box.appendChild(p);box.appendChild(d);g.bindPopup(box);
+    box.appendChild(p);
+    if(sh.type==='line'){const cb=document.createElement('button');cb.textContent='Hat boyunca tara';
+      cb.onclick=()=>{map.closePopup();runCorridor(I.pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Hat taraması başarısız: '+e.message)})};box.appendChild(cb)}
+    box.appendChild(d);g.bindPopup(box);
     shapeLayer.addLayer(g);
   }
 }
@@ -3363,6 +3366,109 @@ $('impFile').onchange=async e=>{
     setMsg(r.total?(r.nn+' nokta ve '+r.ns+' çizgi/alan eklendi'+(r.total>r.nn+r.ns?' ('+(r.total-r.nn-r.ns)+' tanesi zaten vardı)':'')+'.'):'Dosyada nokta, çizgi veya alan bulunamadı.');
   }catch(err){setMsg('Dosya okunamadı: '+(err&&err.message?err.message:'bilinmeyen biçim'))}
 };
+
+/* ---------- Hat boyunca tara: çizilen hattı uzatıp koridoru tarar ---------- */
+async function runCorridor(pts0){
+  if(scanBusy)return;
+  if(is3d){setMsg('Önce 2B görünüme dönün.');return}
+  if(!pts0||pts0.length<2){setMsg('Hat için en az 2 nokta koy.');return}
+  const EXT=1500,WD=100,WI=60,thr=Math.max(1.5,+$('aThr').value);
+  const lat0=pts0[0].lat,lon0=pts0[0].lng,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+  const toM=q=>[(q.lng-lon0)*kx,(q.lat-lat0)*ky],toLL=(x,y)=>L.latLng(lat0+y/ky,lon0+x/kx);
+  const P=pts0.map(toM);
+  // eksen: noktalardan en uygun doğru (PCA)
+  const mx=P.reduce((a,q)=>a+q[0],0)/P.length,my=P.reduce((a,q)=>a+q[1],0)/P.length;
+  let sxx=0,syy=0,sxy=0;P.forEach(q=>{const dx=q[0]-mx,dy=q[1]-my;sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy});
+  const ang=0.5*Math.atan2(2*sxy,sxx-syy);let ux=Math.cos(ang),uy=Math.sin(ang);
+  const first=P[0],lastP=P[P.length-1];
+  if((lastP[0]-first[0])*ux+(lastP[1]-first[1])*uy<0){ux=-ux;uy=-uy}
+  const along=q=>(q[0]-mx)*ux+(q[1]-my)*uy,perp=q=>-(q[0]-mx)*uy+(q[1]-my)*ux;
+  let tmin=Infinity,tmax=-Infinity;P.forEach(q=>{const t=along(q);if(t<tmin)tmin=t;if(t>tmax)tmax=t});
+  tmin-=EXT;tmax+=EXT;
+  const lineBear=((Math.atan2(ux,uy)*180/Math.PI)%180+180)%180;
+  const angDiff=(a,b)=>{let d=Math.abs(a-b)%180;return d>90?180-d:d};
+  const at=t=>toLL(mx+ux*t,my+uy*t);
+  const nI=Math.ceil((tmax-tmin)/180)+1;
+  if(nI>45){setMsg('Hat çok uzun ('+Math.round((tmax-tmin)/1000)+' km). Noktaları birbirine yaklaştır.');return}
+  scanBusy=true;scanStop=false;
+  $('bScan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();$('scanList').innerHTML='';
+  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  const found=[];let done=0,fails=0;
+  const zd=15,CELL=512,nD=Math.ceil((tmax-tmin)/1400)+1,total=nD+nI;
+  const inCorr=(ll,w)=>{const q=toM(ll),t=along(q);return Math.abs(perp(q))<=w&&t>=tmin&&t<=tmax};
+  const info=(ll)=>{const q=toM(ll);return {a:Math.round(along(q)-tmin),o:Math.round(Math.abs(perp(q)))}};
+  try{
+    // 1) yükselti
+    for(let i=0;i<nD&&!scanStop;i++){
+      $('scanRes').textContent='Hat taranıyor (yükselti) '+(done+1)+'/'+total+' · '+found.length+' aday';
+      try{
+        const c=map.project(at(Math.min(tmax,tmin+i*1400)),zd),x0=Math.round(c.x-CELL/2),y0=Math.round(c.y-CELL/2);
+        const g=await grabTiles(DEM_URL,null,zd,x0,y0,CELL,CELL);
+        if(g.error){fails++;done++;continue}
+        const cl=map.unproject([x0+CELL/2,y0+CELL/2],zd),mpp=mppAt(cl.lat,zd),el=demElev(g.data,CELL,CELL);
+        const r=await coreAsync('analyzeDem',[el,CELL,CELL,mpp,{bgMeters:Math.max(60,tunedBg())}]);
+        if(!r.flat){
+          r.elev=el;
+          for(const en of buildEntries(r,mpp,thr,true,null)){
+            if(en.c.S<thr)continue;
+            const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zd);
+            if(!inCorr(ll,WD))continue;
+            const V=verdict(en.c,en.st,null,CELL*mpp,en.chain,false,null);
+            if(V.name==='Zayıf İz')continue;
+            const ii=info(ll),al=(!V.round&&V.bear!=null)?angDiff(V.bear,lineBear)<=20:false;
+            found.push({lat:ll.lat,lon:ll.lng,S:en.c.S+(al?2:0),V,mpp,src:'yükselti',corr:1,extra:'hatta '+ii.o+' m'+(al?' · hat yönünde':'')+' · konum '+ii.a+' m',al});
+          }
+        }
+      }catch(e){fails++}
+      done++;await sleep(0);
+    }
+    // 2) uydu görüntüsü (z18, yoksa z17): hat boyunca pencereler
+    let zi=18;
+    try{const t0=await tileReal(LAYERS.esri.url,'abc',18,at((tmin+tmax)/2));if(t0===false)zi=17}catch(e){}
+    const cw=512,mppI=mppAt(lat0,zi);
+    for(let i=0;i<nI&&!scanStop;i++){
+      $('scanRes').textContent='Hat taranıyor (görüntü) '+(done+1)+'/'+total+' · '+found.length+' aday';
+      try{
+        const c=map.project(at(Math.min(tmax,tmin+i*180)),zi),x0=Math.round(c.x-cw/2),y0=Math.round(c.y-cw/2);
+        const g=await grabTiles(LAYERS.esri.url,'abc',zi,x0,y0,cw,cw);
+        if(g.error){fails++;done++;continue}
+        const r=await coreAsync('analyze',[g.data.data,cw,cw,mppI,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
+        if(!r.flat){
+          for(const en of buildEntries(r,mppI,thr,false,null)){
+            if(en.c.S<thr)continue;
+            const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zi);
+            if(!inCorr(ll,WI))continue;
+            const ii=info(ll);
+            if(en.chain&&en.chain.n>=3){
+              const al=angDiff(en.chain.bearing,lineBear)<=20;
+              if(!al)continue;
+              found.push({lat:ll.lat,lon:ll.lng,S:en.c.S+4,mpp:mppI,src:'görüntü',corr:1,al:true,
+                V:{name:'Hizalı Zincir?',conf:'düşük',size:Math.round(en.st.L)+' m · '+en.chain.n+' çukur',round:false,bear:en.chain.bearing},
+                extra:'hatta '+ii.o+' m · hat yönünde · konum '+ii.a+' m'});
+            }
+          }
+        }
+      }catch(e){fails++}
+      done++;await sleep(0);
+    }
+  }finally{if(wl)try{wl.release()}catch(e){}}
+  found.sort((a,b)=>b.S-a.S);
+  const kept=[];
+  for(const f of found){
+    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<40))continue;
+    kept.push(f);if(kept.length>=30)break;
+  }
+  scanCands(kept,done,total,fails,thr,false);
+  const a=at(tmin),b=at(tmax);
+  scanLayer.addLayer(L.polyline([a,b],{color:'#ff7ab8',weight:2,dashArray:'8 6',interactive:false}));
+  scanLayer.addLayer(L.polyline(pts0,{color:'#ff7ab8',weight:4,interactive:false}));
+  map.fitBounds(L.latLngBounds([a,b]),{padding:[30,30],maxZoom:17});
+  $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+'Hat '+axisName(lineBear)+' ('+Math.round(lineBear)+'°), '+Math.round((tmax-tmin)/100)/10+' km, koridor '+(2*WI)+' m · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
+    '\nHizalı Zincir? yalnızca hat yönünde, en az 3 çukur olan dizilerdir. Yol ve duvar maskesi yok: yol kenarı sahte iz verebilir.';
+  if(kept.length)setPanel(false);
+  scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
+}
+$('msrCor').onclick=()=>{const pts=msrPts.slice();if(pts.length<2){setMsg('Hat için en az 2 nokta koy.');return}msrToggle(false);runCorridor(pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Hat taraması başarısız: '+e.message)})};
 
 /* ---------- Kendi fotoğrafını analiz et ---------- */
 let ph=null;

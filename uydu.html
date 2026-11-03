@@ -3439,7 +3439,7 @@ async function runCorridor(pts0){
             const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zi);
             if(!inCorr(ll,WI))continue;
             const ii=info(ll);
-            if(en.chain&&en.chain.n>=3){
+            if(en.chain&&en.chain.n>=4){
               const al=angDiff(en.chain.bearing,lineBear)<=20;
               if(!al)continue;
               found.push({lat:ll.lat,lon:ll.lng,S:en.c.S+4,mpp:mppI,src:'görüntü',corr:1,al:true,
@@ -3464,7 +3464,7 @@ async function runCorridor(pts0){
   scanLayer.addLayer(L.polyline(pts0,{color:'#ff7ab8',weight:4,interactive:false}));
   map.fitBounds(L.latLngBounds([a,b]),{padding:[30,30],maxZoom:17});
   $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+'Hat '+axisName(lineBear)+' ('+Math.round(lineBear)+'°), '+Math.round((tmax-tmin)/100)/10+' km, koridor '+(2*WI)+' m · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
-    '\nHizalı Zincir? yalnızca hat yönünde, en az 3 çukur olan dizilerdir. Yol ve duvar maskesi yok: yol kenarı sahte iz verebilir.';
+    '\nHizalı Zincir? yalnızca hat yönünde, en az 4 çukur olan dizilerdir. Yol ve duvar maskesi yok: yol kenarı sahte iz verebilir.';
   if(kept.length)setPanel(false);
   scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
 }

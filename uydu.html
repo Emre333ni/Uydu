@@ -2858,7 +2858,9 @@ function showDens(){
   });
   const note=document.createElement('p');note.className='hint';note.textContent='Yığılma kanıt değil: tarla sınırı, kaya ve karst de kümelenir. Kümeye Çapraz kontrol ve Kış izi uygula.';out.appendChild(note);
 }
-$('bDens').onclick=()=>{if(!lastAll.length){setMsg('Önce bir tarama yap.');return}showDens()};
+$('bDens').onclick=()=>{
+  if(!lastAll.length&&lastCands.length>=4)lastAll=lastCands.map(c=>({lat:c.lat,lon:c.lon,S:+((c.text||'').match(/skor ([\d.]+)/)||[0,1])[1]}));
+  if(!lastAll.length){setMsg('Önce bir tarama ya da analiz yap.');return}showDens()};
 let scanStop=false,scanBusy=false;
 function demElev(img,cw,ch){const d=img.data,el=new Float32Array(cw*ch);for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;return el}
 const mppAt=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z);
@@ -3651,7 +3653,7 @@ async function runArea(ptsIn){
   map.fitBounds(L.latLngBounds(pts0),{padding:[30,30],maxZoom:17});
   if(found.length>=4)showDens();
   $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+'Alan '+(A>=1e5?(A/1e6).toFixed(2)+' km²':Math.round(A)+' m²')+' · '+done+'/'+total+' parça · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
-    '\n'+(doImg?'Yükselti adayları + görüntüde en az 4 çukurluk zincirler.':'Alan büyük olduğu için yalnızca yükselti tarandı.')+' Yol ve duvar maskesi yok.';
+    '\n'+(doImg?'Yükselti adayları + görüntüde en az 4 çukurluk zincirler.':'Alan büyük olduğu için yalnızca yükselti tarandı.')+' Yol ve duvar maskesi yok.'+(A<20000?'\nAlan çok küçük ('+Math.round(A)+' m²): zincir ve izler bu kadar alana sığmaz. En az 2–3 hektar çiz.':'');
   if(kept.length)setPanel(false);
   scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';
 }
@@ -3667,24 +3669,25 @@ async function runSnow(lat,lon){
   try{const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});if(t===false)z=17}catch(e){}
   const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
   const win=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=11||m<=3});
-  const pick=[];const K=Math.min(16,win.length);
+  const pick=[];const K=Math.min(24,win.length);
   for(let q=0;q<K;q++)pick.push(win[Math.floor(q*(win.length-1)/Math.max(1,K-1))]);
-  const kept=[];let tried=0;
+  const kept=[];let tried=0,got=0;const frs=[];
   for(const it of pick){
     txt.textContent='Kışlık görüntü '+(++tried)+'/'+pick.length+' · kısmi karlı: '+kept.length;
     let g;try{g=await grabTiles(it.url,null,z,x0,y0,cw,cw)}catch(e){continue}
     if(!g||g.error)continue;
+    got++;
     const d=g.data.data,m=new Uint8Array(cw*cw);let n=0;
     for(let i=0;i<cw*cw;i++){const r=d[i*4],gg=d[i*4+1],b=d[i*4+2],mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);
-      if(mx>155&&(mx-mn)/mx<0.16){m[i]=1;n++}}
-    const fr=n/(cw*cw);
+      if(mx>150&&(mx-mn)/mx<0.2){m[i]=1;n++}}
+    const fr=n/(cw*cw);frs.push(Math.round(fr*100));
     if(fr<0.06||fr>0.94)continue;
     if(kept.some(k=>Math.abs(k.fr-fr)<0.003))continue;   // aynı görüntünün tekrarı
     kept.push({it,fr,m,img:g.data});
     await sleep(0);
   }
   if(kept.length<3){
-    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.';
+    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.\nKışlık '+win.length+' görüntüden '+pick.length+' denendi, '+got+' alındı. Kar oranları: '+(frs.length?frs.map(x=>'%'+x).join(' '):'—')+'\n(Kısmi karlı sayılan aralık %6–%94. Çoğu görüntü karsızsa bu bölgede kışlık kayıt yok demektir.)';
     if(!kept.length)return;
   }
   const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};

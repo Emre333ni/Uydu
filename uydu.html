@@ -101,6 +101,11 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 #ccNav{margin-top:3px;font-size:12.5px;font-weight:700;color:var(--ember)}
 #ccNav.arr{color:var(--ok)}
 #bWalk.on{background:var(--ember);color:#111}
+#snBox{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:14px}
+#snBox[hidden]{display:none}
+#snBox>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
+#snBox h3{margin:0 0 6px;font-size:15px}#snBox p{margin:6px 0;font-size:13px}#snBox canvas{width:100%;border-radius:6px;display:block}#snBox .sc{font-size:11px;color:#9fb0be;text-align:center}
+#densList button{display:block;width:100%;text-align:left;margin:3px 0}
 #tsBox,#phBox{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:14px}
 #tsBox>div,#phBox>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
 #phCv{width:100%;border-radius:8px;display:block;background:#05090e}
@@ -207,7 +212,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <button id="bTilt" aria-label="Eğimi aç/kapat" hidden>⬍</button>
       <button id="bNorth" aria-label="Kuzeye döndür" hidden>⟲</button>
     </div>
-    <div id="msr" hidden><span id="msrT"></span><button id="msrSaveL" aria-label="Çizgiyi kaydet" title="Çizgiyi kaydet">💾</button><button id="msrSaveA" aria-label="Alanı kaydet" title="Alanı kaydet">⬠</button><button id="msrCor" aria-label="Hat boyunca tara" title="Hat boyunca tara">🎯</button><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
+    <div id="msr" hidden><span id="msrT"></span><button id="msrSaveL" aria-label="Çizgiyi kaydet" title="Çizgiyi kaydet">💾</button><button id="msrSaveA" aria-label="Alanı kaydet" title="Alanı kaydet">⬠</button><button id="msrCor" aria-label="Hat boyunca tara" title="Hat boyunca tara">🎯</button><button id="msrArea" aria-label="Alanı tara" title="Alanı tara (en az 3 nokta)">▦</button><button id="msrUndo" aria-label="Geri al">↶</button><button id="msrClr" aria-label="Temizle">✕</button></div>
     <div id="cc" hidden><button id="ccPrev" aria-label="Önceki aday">‹</button><div id="ccBox"><div id="ccText"></div><div id="ccNav" hidden></div></div><button id="ccNext" aria-label="Sonraki aday">›</button></div>
   </div>
 
@@ -348,7 +353,9 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div class="btns"><button id="bTap">Dokun-incele: kapalı</button></div>
       <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
       <div class="btns"><button id="bFan">Yelpaze tara (harita merkezinden, 12 yön)</button></div>
+      <div class="btns"><button id="bDens">Yoğunluk kümeleri (son tarama)</button><button id="bSnow">Kış/kar izi (harita merkezi)</button></div>
       <div id="scanRes" style="white-space:pre-line;font-size:12px"></div>
+      <div id="densList"></div>
       <div id="scanList"></div>
       <p class="hint">Ön eleme aracıdır, tespit değil. Yerinde doğrulayın.</p>
     </div>
@@ -408,6 +415,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
   <div class="btns"><button id="phNote">Nota kaydet</button><button id="phClose">Kapat</button></div>
 </div></div>
 <div id="tsBox" hidden><div><h3 id="tsTitle"></h3><svg id="tsSvg" viewBox="0 0 320 150" width="100%" style="background:#0b1117;border-radius:8px"></svg><p id="tsText"></p><p class="hint" style="margin:0">Yeşillik farkı RGB görüntüden hesaplanır (NDVI değildir). Wayback tarihi yayın tarihidir, çekim tarihi bölgeye göre farklı olabilir.</p><div class="btns"><button id="tsClose">Kapat</button></div></div></div>
+<div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
 <div id="dlg" hidden>
   <div class="card">
     <b>Yeni not</b> <small id="dlgPos" style="color:#8b9aa8"></small>
@@ -2800,6 +2808,57 @@ $('bVal2').onclick=runTune;
 
 /* ---------- Bölge tarama (yükselti) ve çapraz kontrol ---------- */
 const scanLayer=L.layerGroup().addTo(map);
+const densLayer=L.layerGroup().addTo(map);
+let lastAll=[];
+/* Aynı yerdeki izleri tek karta birleştirir; iki ayrı kaynakta (yükselti + görüntü) çıkan yer öne geçer. */
+function mergeFound(list,dist,max){
+  const arr=list.slice().sort((a,b)=>b.S-a.S),kept=[];
+  for(const f of arr){
+    const k=kept.find(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<dist);
+    if(!k){kept.push(Object.assign({},f,{_s:new Set([f.src||'yükselti'])}));continue}
+    k._s.add(f.src||'yükselti');
+  }
+  for(const k of kept){
+    if(k._s.size>1){k.S+=2;k.src=[...k._s].sort().join('+');k.extra=(k.extra?k.extra+' · ':'')+'2 kaynakta aynı yerde'}
+    delete k._s;
+  }
+  kept.sort((a,b)=>b.S-a.S);
+  return kept.slice(0,max);
+}
+function clusterPts(pts,R,minN){
+  const sc=pts.map(f=>{let n=0,sum=0;for(const g of pts){if(L.latLng(f.lat,f.lon).distanceTo([g.lat,g.lon])<=R){n++;sum+=g.S}}return {f,n,sum}});
+  sc.sort((a,b)=>b.sum-a.sum);
+  const cl=[];
+  for(const c of sc){
+    if(c.n<minN)continue;
+    if(cl.some(k=>L.latLng(k.f.lat,k.f.lon).distanceTo([c.f.lat,c.f.lon])<2*R))continue;
+    cl.push(c);
+  }
+  return cl;
+}
+/* Yoğunluk kümeleri: tek tek zayıf izler bir yerde yığılıyorsa orayı işaretler */
+function showDens(){
+  densLayer.clearLayers();const out=$('densList');out.innerHTML='';
+  const pts=lastAll.filter(f=>f&&f.lat!=null);
+  if(pts.length<4){out.textContent='Önce bir tarama yap (en az 4 iz gerekir).';return}
+  const R=150,cl=clusterPts(pts,R,3).slice(0,8);
+  if(!cl.length){out.textContent='Yığılma yok: 150 m içinde en az 3 iz olan yer çıkmadı.';return}
+  const mx=cl[0].sum;
+  cl.forEach((c,k)=>{
+    const ll=L.latLng(c.f.lat,c.f.lon),w=c.sum/mx;
+    const col=w>.75?'#ff4d4d':w>.45?'#ff9f43':'#ffd93d';
+    const circ=L.circle(ll,{radius:R,color:col,weight:2,fillColor:col,fillOpacity:.18,interactive:true});
+    circ.bindPopup('Küme K'+(k+1)+' · '+c.n+' iz · toplam skor '+c.sum.toFixed(1)+'\n'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5));
+    densLayer.addLayer(circ);
+    densLayer.addLayer(L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="cand scn" style="background:'+col+';color:#111">K'+(k+1)+'</div>',iconSize:[26,26],iconAnchor:[13,13]}),interactive:false}));
+    const b=document.createElement('button');
+    b.innerHTML='<b>K'+(k+1)+' · '+c.n+' iz · skor '+c.sum.toFixed(1)+'</b><br><span style="color:#8b9aa8">'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+'</span>';
+    b.onclick=()=>{map.setView(ll,Math.max(map.getZoom(),16));circ.openPopup()};
+    out.appendChild(b);
+  });
+  const note=document.createElement('p');note.className='hint';note.textContent='Yığılma kanıt değil: tarla sınırı, kaya ve karst de kümelenir. Kümeye Çapraz kontrol ve Kış izi uygula.';out.appendChild(note);
+}
+$('bDens').onclick=()=>{if(!lastAll.length){setMsg('Önce bir tarama yap.');return}showDens()};
 let scanStop=false,scanBusy=false;
 function demElev(img,cw,ch){const d=img.data,el=new Float32Array(cw*ch);for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;return el}
 const mppAt=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z);
@@ -2852,26 +2911,22 @@ async function runScan(){
     if(wl)try{wl.release()}catch(e){}
   }
   // yinelenenleri ele (taramalar üst üste biniyor)
-  found.sort((a,b)=>b.S-a.S);
-  const kept=[];
-  for(const f of found){
-    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<70))continue;
-    kept.push(f);if(kept.length>=40)break;
-  }
+  lastAll=found.slice();
+  const kept=mergeFound(found,70,40);
   scanCands(kept,done,total,fails,thr,viewSmall);
   if(viewSmall){const a=map.unproject([area.x0,area.y0],zd),c=map.unproject([area.x1,area.y1],zd);map.fitBounds([[c.lat,a.lng],[a.lat,c.lng]],{animate:false,padding:[10,10]})}
   if(kept.length)setPanel(false);
   scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';
 }
 function scanCands(kept,done,total,fails,thr,viewSmall){
-  const list=$('scanList');list.innerHTML='';scanLayer.clearLayers();
+  const list=$('scanList');list.innerHTML='';scanLayer.clearLayers();densLayer.clearLayers();$('densList').innerHTML='';
   const day=new Date().toLocaleDateString('tr-TR');
   lastCands=[];
   kept.forEach((f,k)=>{
     const V=f.V,dirTxt=V.round?'—':DIRS[Math.round(V.bear/45)%4];
     const head='#'+(k+1)+' skor '+f.S.toFixed(1)+' · '+dirTxt+' · '+V.name;
     const sub=V.size+' · güven '+V.conf+(f.extra?' · '+f.extra:' · bölge taraması');
-    const meta=(f.corr?'Hat boyunca tarama':'Bölge taraması')+' ('+(f.src||'yükselti')+') · kaynak: '+(f.src==='görüntü'?'Esri görüntü (z18)':'Terrarium yükselti (~30 m)')+' · '+day+' · eşik '+thr.toFixed(1);
+    const meta=(f.corr?'Hat boyunca tarama':f.area?'Alan taraması':'Bölge taraması')+' ('+(f.src||'yükselti')+') · kaynak: '+((f.src||'').includes('+')?'Esri görüntü (z18) + Terrarium yükselti':f.src==='görüntü'?'Esri görüntü (z18)':'Terrarium yükselti (~30 m)')+' · '+day+' · eşik '+thr.toFixed(1);
     const o={lat:f.lat,lon:f.lon,text:head+' · '+sub,name:V.name,conf:V.conf,size:V.size,why:head,thumb:null,meta};
     lastCands.push(o);
     const ll=L.latLng(f.lat,f.lon);
@@ -2884,6 +2939,7 @@ function scanCands(kept,done,total,fails,thr,viewSmall){
     fb.onclick=()=>{map.closePopup();map.setView(ll,16,{animate:false});$('aSrc').value='DEM';$('aSrc').dispatchEvent(new Event('change'));runAnalysis()};
     box.appendChild(fb);
     addCrossBtn(box,ll,o,mk);
+    const snb=document.createElement('button');snb.textContent='Kış izi';snb.onclick=()=>{map.closePopup();runSnow(f.lat,f.lon).catch(e=>setMsg('Kış izi alınamadı: '+e.message))};box.appendChild(snb);
     const nb=document.createElement('button');nb.textContent='Nota ekle';nb.onclick=()=>{map.closePopup();openNote(f.lat,f.lon,o.text+'\n')};box.appendChild(nb);
     const shb=document.createElement('button');shb.textContent='Paylaş';shb.onclick=()=>shareLoc(f.lat,f.lon,o.text);box.appendChild(shb);
     mk.bindPopup(box);scanLayer.addLayer(mk);
@@ -2893,7 +2949,7 @@ function scanCands(kept,done,total,fails,thr,viewSmall){
     list.appendChild(bt);
   });
   $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+done+'/'+total+' parça tarandı · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
-    (viewSmall?'\nGörünen alan küçük olduğu için çevresindeki yaklaşık '+Math.round(256*mppAt(map.getCenter().lat,15))+' m tarandı.':'')+'\nYalnızca yükselti ile ön eleme (OSM elemesi yok). Aday seçip "Çapraz kontrol" ve "Tam analiz" yapın.'+(kept.length?'':'\nAday yok: eşiği düşürün ya da başka bölge deneyin.');
+    (viewSmall?'\nGörünen alan küçük olduğu için çevresindeki yaklaşık '+Math.round(256*mppAt(map.getCenter().lat,15))+' m tarandı.':'')+'\nYalnızca yükselti ile ön eleme (OSM elemesi yok). Aday seçip "Çapraz kontrol" ve "Tam analiz" yapın.'+(kept.length?'':'\nAday yok: eşiği düşürün ya da başka bölge deneyin.')+(()=>{const nc=clusterPts(mergeFound(lastAll.slice(),40,9999),200,3).length;return nc?'\nYoğun bölge: '+nc+' küme (Yoğunluk kümeleri düğmesi).':''})();
 }
 $('bScan').onclick=()=>runScan().catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Tarama başarısız: '+e.message)});
 $('bScanStop').onclick=()=>{scanStop=true};
@@ -3293,6 +3349,7 @@ function renderShapes(){
     box.appendChild(p);
     if(sh.type==='line'){const cb=document.createElement('button');cb.textContent='Hat boyunca tara';
       cb.onclick=()=>{map.closePopup();runCorridor(I.pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Hat taraması başarısız: '+e.message)})};box.appendChild(cb)}
+    if(sh.type==='poly'){const ab=document.createElement('button');ab.textContent='Alanı tara';ab.onclick=()=>{map.closePopup();runArea(I.pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bScanStop').style.display='none';setMsg('Alan taraması başarısız: '+e.message)})};box.appendChild(ab)}
     box.appendChild(d);g.bindPopup(box);
     shapeLayer.addLayer(g);
   }
@@ -3460,11 +3517,8 @@ async function runCorridor(pts0,opts){
   }finally{if(wl)try{wl.release()}catch(e){}}
   found.sort((a,b)=>b.S-a.S);
   if(collect)return {found,fails,lineBear};
-  const kept=[];
-  for(const f of found){
-    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<40))continue;
-    kept.push(f);if(kept.length>=30)break;
-  }
+  lastAll=found.slice();
+  const kept=mergeFound(found,60,30);
   scanCands(kept,done,total,fails,thr,false);
   const a=at(tmin),b=at(tmax);
   scanLayer.addLayer(L.polyline([a,b],{color:'#ff7ab8',weight:2,dashArray:'8 6',interactive:false}));
@@ -3500,12 +3554,8 @@ async function runFan(origin){
       scanLayer.addLayer(L.polyline([pt(b,-1560),pt(b,1560)],{color:'#ff7ab8',weight:1,dashArray:'4 8',opacity:.6,interactive:false}));
     }
   }finally{if(wl)try{wl.release()}catch(e){}}
-  all.sort((a,b)=>b.S-a.S);
-  const kept=[];
-  for(const f of all){
-    if(kept.some(k=>L.latLng(k.lat,k.lon).distanceTo([f.lat,f.lon])<40))continue;
-    kept.push(f);if(kept.length>=30)break;
-  }
+  lastAll=all.slice();
+  const kept=mergeFound(all,60,30);
   scanCands(kept,per.length,BR.length,fails,thr,false);
   scanLayer.addLayer(L.circleMarker(origin,{radius:7,color:'#fff',weight:2,fillColor:'#ff7ab8',fillOpacity:1,interactive:false}));
   const lines=per.map(x=>axisName(x.b)+' ('+x.b+'°): '+(x.n?x.n+' hizalı zincir':'yok')).join('\n');
@@ -3516,6 +3566,162 @@ async function runFan(origin){
   scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';
 }
 $('bFan').onclick=()=>runFan(map.getCenter()).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';setMsg('Yelpaze taraması başarısız: '+e.message)});
+
+/* ---------- Alan taraması: çizdiğin alanı ızgara ızgara tarar ---------- */
+async function runArea(ptsIn){
+  if(scanBusy)return;
+  if(is3d){setMsg('Önce 2B görünüme dönün.');return}
+  const pts0=(ptsIn||[]).map(q=>Array.isArray(q)?L.latLng(q[0],q[1]):L.latLng(q.lat,q.lng!=null?q.lng:q.lon));
+  if(pts0.length<3){setMsg('Alan için en az 3 nokta koy.');return}
+  const thr=Math.max(1.5,+$('aThr').value);
+  const lat0=pts0[0].lat,lon0=pts0[0].lng,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+  const toM=q=>[(q.lng-lon0)*kx,(q.lat-lat0)*ky],toLL=(x,y)=>L.latLng(lat0+y/ky,lon0+x/kx);
+  const P=pts0.map(toM);
+  const inPoly=ll=>{const q=toM(ll);let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){
+    if((P[i][1]>q[1])!==(P[j][1]>q[1])&&q[0]<(P[j][0]-P[i][0])*(q[1]-P[i][1])/(P[j][1]-P[i][1])+P[i][0])c=!c}return c};
+  let x0m=1e12,x1m=-1e12,y0m=1e12,y1m=-1e12;P.forEach(q=>{x0m=Math.min(x0m,q[0]);x1m=Math.max(x1m,q[0]);y0m=Math.min(y0m,q[1]);y1m=Math.max(y1m,q[1])});
+  let A=0;for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];A+=a[0]*b[1]-b[0]*a[1]}A=Math.abs(A)/2;
+  const SD=1400,SI=180,cwI=768;
+  const grid=(st)=>{const r=[];for(let y=y0m-st*0.0;y<=y1m+st*0.5;y+=st)for(let x=x0m;x<=x1m+st*0.5;x+=st){
+    const ll=toLL(Math.min(x,x1m),Math.min(y,y1m)),c=toM(ll);
+    // pencere merkezi alanın içinde ya da yakınında olmalı
+    let near=inPoly(ll);if(!near){for(const q of P){if(Math.hypot(q[0]-c[0],q[1]-c[1])<st*0.75){near=true;break}}}
+    if(near)r.push(ll)}return r};
+  const gD=grid(SD),gI=grid(SI);
+  const doImg=gI.length<=150;
+  if(!doImg&&gD.length>40){setMsg('Alan çok büyük ('+(A/1e6).toFixed(1)+' km²). Daha küçük çiz (görüntü için en fazla ~4 km²).');return}
+  scanBusy=true;scanStop=false;
+  $('bScan').disabled=true;$('bFan').disabled=true;$('bScanStop').style.display='';scanLayer.clearLayers();densLayer.clearLayers();$('scanList').innerHTML='';$('densList').innerHTML='';
+  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}
+  const found=[];let done=0,fails=0;const total=gD.length+(doImg?gI.length:0);
+  const zd=15,CELL=512;
+  try{
+    for(let i=0;i<gD.length&&!scanStop;i++){
+      $('scanRes').textContent='Alan taranıyor (yükselti) '+(done+1)+'/'+total+' · '+found.length+' iz';
+      try{
+        const c=map.project(gD[i],zd),x0=Math.round(c.x-CELL/2),y0=Math.round(c.y-CELL/2);
+        const g=await grabTiles(DEM_URL,null,zd,x0,y0,CELL,CELL);
+        if(g.error){fails++;done++;continue}
+        const cl=map.unproject([x0+CELL/2,y0+CELL/2],zd),mpp=mppAt(cl.lat,zd),el=demElev(g.data,CELL,CELL);
+        const r=await coreAsync('analyzeDem',[el,CELL,CELL,mpp,{bgMeters:Math.max(60,tunedBg())}]);
+        if(!r.flat){
+          r.elev=el;
+          for(const en of buildEntries(r,mpp,thr,true,null)){
+            if(en.c.S<thr)continue;
+            const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zd);
+            if(!inPoly(ll))continue;
+            const V=verdict(en.c,en.st,null,CELL*mpp,en.chain,false,null);
+            if(V.name==='Zayıf İz')continue;
+            found.push({lat:ll.lat,lon:ll.lng,S:en.c.S,V,mpp,src:'yükselti',area:1,extra:'alan içinde'});
+          }
+        }
+      }catch(e){fails++}
+      done++;await sleep(0);
+    }
+    if(doImg){
+      let zi=18;
+      try{const t0=await tileReal(LAYERS.esri.url,'abc',18,gI[0]);if(t0===false)zi=17}catch(e){}
+      const mppI=mppAt(lat0,zi);
+      for(let i=0;i<gI.length&&!scanStop;i++){
+        $('scanRes').textContent='Alan taranıyor (görüntü) '+(done+1)+'/'+total+' · '+found.length+' iz';
+        try{
+          const c=map.project(gI[i],zi),x0=Math.round(c.x-cwI/2),y0=Math.round(c.y-cwI/2);
+          const g=await grabTiles(LAYERS.esri.url,'abc',zi,x0,y0,cwI,cwI);
+          if(g.error){fails++;done++;continue}
+          const r=await coreAsync('analyze',[g.data.data,cwI,cwI,mppI,{bgMeters:Math.min(60,+$('aBg').value||60)}]);
+          if(!r.flat){
+            for(const en of buildEntries(r,mppI,thr,false,null)){
+              if(en.c.S<thr||!en.chain||en.chain.n<4)continue;
+              const ll=map.unproject([x0+en.c.x+0.5,y0+en.c.y+0.5],zi);
+              if(!inPoly(ll))continue;
+              found.push({lat:ll.lat,lon:ll.lng,S:en.c.S+4,mpp:mppI,src:'görüntü',area:1,
+                V:{name:'Hizalı Zincir?',conf:'düşük',size:Math.round(en.st.L)+' m · '+en.chain.n+' çukur',round:false,bear:en.chain.bearing},extra:'alan içinde'});
+            }
+          }
+        }catch(e){fails++}
+        done++;await sleep(0);
+      }
+    }
+  }finally{if(wl)try{wl.release()}catch(e){}}
+  found.sort((a,b)=>b.S-a.S);
+  lastAll=found.slice();
+  const kept=mergeFound(found,60,40);
+  scanCands(kept,done,total,fails,thr,false);
+  scanLayer.addLayer(L.polygon(pts0,{color:'#ff7ab8',weight:3,dashArray:'8 6',fillOpacity:.04,interactive:false}));
+  map.fitBounds(L.latLngBounds(pts0),{padding:[30,30],maxZoom:17});
+  if(found.length>=4)showDens();
+  $('scanRes').textContent=(scanStop?'Durduruldu · ':'')+'Alan '+(A>=1e5?(A/1e6).toFixed(2)+' km²':Math.round(A)+' m²')+' · '+done+'/'+total+' parça · '+kept.length+' aday'+(fails?' · '+fails+' parça alınamadı':'')+
+    '\n'+(doImg?'Yükselti adayları + görüntüde en az 4 çukurluk zincirler.':'Alan büyük olduğu için yalnızca yükselti tarandı.')+' Yol ve duvar maskesi yok.';
+  if(kept.length)setPanel(false);
+  scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';
+}
+$('msrArea').onclick=()=>{const pts=msrPts.slice();if(pts.length<3){setMsg('Alan için en az 3 nokta koy.');return}msrToggle(false);runArea(pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';setMsg('Alan taraması başarısız: '+e.message)})};
+
+/* ---------- Kış / kar izi: aynı noktanın karlı görüntülerinde geç / erken eriyen yerler ---------- */
+async function runSnow(lat,lon){
+  if(!wbItems.length){setMsg('Tarihsel görüntü listesi yüklenmedi.');return}
+  const box=$('snBox'),grid=$('snGrid'),txt=$('snText');
+  $('snTitle').textContent='Kış / kar izi · '+lat.toFixed(5)+', '+lon.toFixed(5);
+  grid.innerHTML='';txt.textContent='Kışlık görüntüler alınıyor…';box.hidden=false;
+  const ll=L.latLng(lat,lon);let z=18;
+  try{const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});if(t===false)z=17}catch(e){}
+  const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
+  const win=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=11||m<=3});
+  const pick=[];const K=Math.min(16,win.length);
+  for(let q=0;q<K;q++)pick.push(win[Math.floor(q*(win.length-1)/Math.max(1,K-1))]);
+  const kept=[];let tried=0;
+  for(const it of pick){
+    txt.textContent='Kışlık görüntü '+(++tried)+'/'+pick.length+' · kısmi karlı: '+kept.length;
+    let g;try{g=await grabTiles(it.url,null,z,x0,y0,cw,cw)}catch(e){continue}
+    if(!g||g.error)continue;
+    const d=g.data.data,m=new Uint8Array(cw*cw);let n=0;
+    for(let i=0;i<cw*cw;i++){const r=d[i*4],gg=d[i*4+1],b=d[i*4+2],mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);
+      if(mx>155&&(mx-mn)/mx<0.16){m[i]=1;n++}}
+    const fr=n/(cw*cw);
+    if(fr<0.06||fr>0.94)continue;
+    if(kept.some(k=>Math.abs(k.fr-fr)<0.003))continue;   // aynı görüntünün tekrarı
+    kept.push({it,fr,m,img:g.data});
+    await sleep(0);
+  }
+  if(kept.length<3){
+    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.';
+    if(!kept.length)return;
+  }
+  const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
+  const cap=(c,t)=>{const d=document.createElement('div');const s=document.createElement('div');s.className='sc';s.textContent=t;d.appendChild(c);d.appendChild(s);grid.appendChild(d)};
+  kept.slice(0,5).forEach(k=>{const c=mk(cw,cw);c.getContext('2d').putImageData(k.img,0,0);cap(c,k.it.date+' · kar %'+Math.round(k.fr*100))});
+  if(kept.length>=3){
+    const N=cw*cw,f=new Float32Array(N);
+    for(const k of kept)for(let i=0;i<N;i++)f[i]+=k.m[i];
+    for(let i=0;i<N;i++)f[i]/=kept.length;
+    const box1=(src,r)=>{ // kutu bulanıklığı (integral görüntü)
+      const W=cw+1,I=new Float64Array(W*W);
+      for(let y=0;y<cw;y++){let row=0;for(let x=0;x<cw;x++){row+=src[y*cw+x];I[(y+1)*W+x+1]=I[y*W+x+1]+row}}
+      const o=new Float32Array(N);
+      for(let y=0;y<cw;y++)for(let x=0;x<cw;x++){
+        const xa=Math.max(0,x-r),xb=Math.min(cw,x+r+1),ya=Math.max(0,y-r),yb=Math.min(cw,y+r+1);
+        o[y*cw+x]=(I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa])/((xb-xa)*(yb-ya));
+      }
+      return o};
+    const fs=box1(f,3),lm=box1(f,40);
+    const c=mk(cw,cw),ctx=c.getContext('2d'),im=ctx.createImageData(cw,cw);
+    let late=0,early=0;
+    for(let i=0;i<N;i++){
+      const d=fs[i]-lm[i],v=Math.round(255*(0.25+0.45*fs[i]));
+      let r=v,g=v,b=v;
+      if(d>0.28){r=255;g=70;b=70;late++}else if(d<-0.28){r=70;g=130;b=255;early++}
+      im.data[i*4]=r;im.data[i*4+1]=g;im.data[i*4+2]=b;im.data[i*4+3]=255;
+    }
+    ctx.putImageData(im,0,0);
+    // merkez işareti
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cw/2,cw/2,14,0,6.283);ctx.stroke();
+    cap(c,'Fark: kırmızı = geç eriyen, mavi = erken eriyen');
+    const mpp=mppAt(lat,z);
+    txt.textContent=kept.length+' kısmi karlı görüntü · pencere '+Math.round(cw*mpp)+' m\nGeç eriyen/tutan: %'+(100*late/N).toFixed(1)+' · erken eriyen: %'+(100*early/N).toFixed(1)+'\nDaire noktanın yeridir. Daire içinde ve çevresinde tutarlı bir leke/hat varsa bunu yorumlamak için görüntüyü sohbete at.';
+  }else txt.textContent+='\n';
+}
+$('snClose').onclick=()=>{$('snBox').hidden=true};
+$('bSnow').onclick=()=>{const c=map.getCenter();runSnow(c.lat,c.lng).catch(e=>setMsg('Kış izi alınamadı: '+e.message))};
 
 /* ---------- Kendi fotoğrafını analiz et ---------- */
 let ph=null;

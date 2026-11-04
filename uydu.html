@@ -144,7 +144,12 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 .cand{width:24px;height:24px;border-radius:50%;background:rgba(240,136,58,.95);border:2px solid #fff;color:#1a0f05;font:800 12px/20px -apple-system,sans-serif;text-align:center;box-shadow:0 0 5px #000}
 .site{width:12px;height:12px;background:var(--gok);border:2px solid #fff;transform:rotate(45deg);box-shadow:0 0 4px #000}
 .leaflet-container{font:inherit;background:#05090e}
-.leaflet-control-attribution{font-size:9px!important;background:rgba(255,255,255,.7)!important}
+.leaflet-control-attribution{font-size:8px!important;line-height:11px;background:rgba(10,14,19,.45)!important;color:#cfd8df!important;padding:1px 5px!important;border-radius:6px 0 0 0;max-width:78vw}
+.leaflet-control-attribution a{color:#cfd8df!important}
+.leaflet-control-attribution.cmp{font-size:0!important;line-height:0;width:20px;height:18px;padding:0!important;text-align:center;overflow:hidden;cursor:pointer}
+.leaflet-control-attribution.cmp *{display:none}
+.leaflet-control-attribution.cmp::before{content:"ⓘ";font-size:12px;line-height:18px;color:#cfd8df}
+.leaflet-control-scale-line{background:rgba(10,14,19,.45)!important;color:#e9eef2!important;border-color:#cfd8df!important;font-size:9px!important;line-height:11px;padding:0 4px!important;text-shadow:none!important}
 .popup{min-width:170px}
 .popup img{max-width:200px;border-radius:6px;display:block;margin:6px 0}
 .popup p{margin:0 0 4px;white-space:pre-wrap}
@@ -957,6 +962,7 @@ try{const m=location.hash.match(/ll=(-?[\d.]+),(-?[\d.]+)(?:,(\d+))?/);if(m)v0={
 const map=L.map('map',{zoomControl:false,maxZoom:21,minZoom:3,zoomAnimation:true}).setView([v0.lat,v0.lng],v0.z);
 map.attributionControl.setPrefix(false);
 L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
+{const ac=map.attributionControl.getContainer();if(ac){ac.classList.add('cmp');ac.addEventListener('click',e=>{if(e.target.tagName==='A')return;ac.classList.toggle('cmp')})}}
 
 map.createPane('paneA').style.zIndex=200;
 map.createPane('paneB').style.zIndex=210;
@@ -3695,7 +3701,7 @@ async function runSnow(lat,lon){
   grid.innerHTML='';txt.textContent='Kışlık görüntüler alınıyor…';box.hidden=false;
   const ll=L.latLng(lat,lon);let z=18;
   try{const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});if(t===false)z=17}catch(e){}
-  const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
+  const cw=384;let pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
   let win=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=11||m<=3});
   const nWin=win.length;let uniqTxt='';
   if(win.length){
@@ -3706,9 +3712,23 @@ async function runSnow(lat,lon){
   }
   const pick=[];const K=Math.min(24,win.length);
   for(let q=0;q<K;q++)pick.push(win[Math.floor(q*(win.length-1)/Math.max(1,K-1))]);
+  // karede gerçekten görüntü olan en yüksek yakınlaştırmayı seç (Wayback çoğu kayıtta z18 vermez)
+  const hasTile=async(it,zz)=>{const t=map.project(ll,zz);return !!(await loadImg(tplUrl(it.url,zz,Math.floor(t.x/256),Math.floor(t.y/256),null)))};
+  let poolPick=pick;
+  for(const zz of [z,z-1,z-2,z-3]){
+    if(zz<15)break;
+    txt.textContent='Görüntü var mı bakılıyor (z'+zz+')…';
+    const ok=await Promise.all(pick.map(it=>hasTile(it,zz)));
+    const hits=pick.filter((_,i)=>ok[i]);
+    if(hits.length>=Math.min(6,Math.ceil(pick.length/3))){
+      poolPick=hits;
+      if(zz!==z){z=zz;pc=map.project(ll,z);x0=Math.round(pc.x-cw/2);y0=Math.round(pc.y-cw/2);uniqTxt+='Kış görüntüsü z'+zz+' seviyesinde var (daha yüksekte yok). '}
+      break;
+    }
+  }
   const kept=[];let tried=0,got=0;const frs=[];
-  for(const it of pick){
-    txt.textContent='Kışlık görüntü '+(++tried)+'/'+pick.length+' · kısmi karlı: '+kept.length;
+  for(const it of poolPick){
+    txt.textContent='Kışlık görüntü '+(++tried)+'/'+poolPick.length+' · kısmi karlı: '+kept.length;
     let g;try{g=await grabTiles(it.url,null,z,x0,y0,cw,cw)}catch(e){continue}
     if(!g||g.error)continue;
     got++;
@@ -3722,7 +3742,7 @@ async function runSnow(lat,lon){
     await sleep(0);
   }
   if(kept.length<3){
-    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.\n'+uniqTxt+pick.length+' denendi, '+got+' alındı. Kar oranları: '+(frs.length?frs.map(x=>'%'+x).join(' '):'—')+'\n(Kısmi karlı sayılan aralık %6–%94. Çoğu görüntü karsızsa bu bölgede kışlık kayıt yok demektir.)';
+    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.\n'+uniqTxt+poolPick.length+' denendi, '+got+' alındı. Kar oranları: '+(frs.length?frs.map(x=>'%'+x).join(' '):'—')+'\n(Kısmi karlı sayılan aralık %6–%94. Çoğu görüntü karsızsa bu bölgede kışlık kayıt yok demektir.)';
     if(!kept.length)return;
   }
   const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};

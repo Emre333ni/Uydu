@@ -3659,6 +3659,34 @@ async function runArea(ptsIn){
 }
 $('msrArea').onclick=()=>{const pts=msrPts.slice();if(pts.length<3){setMsg('Alan için en az 3 nokta koy.');return}msrToggle(false);runArea(pts).catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bScanStop').style.display='none';setMsg('Alan taraması başarısız: '+e.message)})};
 
+/* Wayback: bu karede gerçekten farklı görüntü olan kayıtları ayıklar (aynı görüntünün tekrarlarını atar) */
+async function waybackUnique(items,z,tx,ty,onProg){
+  const relOf=it=>{const m=(it.url||'').match(/\/tile\/(\d+)\/\{z\}/);return m?+m[1]:null};
+  const byRel=new Map();items.forEach(it=>{const r=relOf(it);if(r!=null)byRel.set(r,it)});
+  const base=(items[0].url||'').split('/tile/')[0];
+  if(!byRel.size||!base)return {list:items,ok:false};
+  const eff=new Map(),out=[];let okN=0;
+  const q=items.slice();
+  const work=async()=>{
+    while(q.length){
+      const it=q.shift(),M=relOf(it);if(M==null)continue;
+      try{
+        const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),8000);
+        const r=await fetch(base+'/tilemap/'+M+'/'+z+'/'+ty+'/'+tx,{signal:ctl.signal});clearTimeout(to);
+        if(!r.ok)continue;
+        const j=await r.json();okN++;
+        const sel=(j.select&&j.select.length)?j.select[0]:(j.data&&j.data[0]===1?M:null);
+        if(sel==null)continue;
+        if(!eff.has(sel)){eff.set(sel,true);out.push(byRel.get(sel)||it)}
+      }catch(e){}
+      if(onProg)onProg(okN);
+    }
+  };
+  await Promise.all([work(),work(),work(),work(),work(),work()]);
+  if(okN<Math.min(5,items.length)||!out.length)return {list:items,ok:false};
+  out.sort((a,b)=>a.date<b.date?1:-1);
+  return {list:out,ok:true,checked:okN};
+}
 /* ---------- Kış / kar izi: aynı noktanın karlı görüntülerinde geç / erken eriyen yerler ---------- */
 async function runSnow(lat,lon){
   if(!wbItems.length){setMsg('Tarihsel görüntü listesi yüklenmedi.');return}
@@ -3668,7 +3696,14 @@ async function runSnow(lat,lon){
   const ll=L.latLng(lat,lon);let z=18;
   try{const t=await tileReal(LAYERS.esri.url,'abc',18,{lat,lng:lon});if(t===false)z=17}catch(e){}
   const cw=384,pc=map.project(ll,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
-  const win=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=11||m<=3});
+  let win=wbItems.filter(d=>{const m=+d.date.slice(5,7);return m>=11||m<=3});
+  const nWin=win.length;let uniqTxt='';
+  if(win.length){
+    txt.textContent='Farklı görüntüler ayıklanıyor…';
+    const u=await waybackUnique(win,z,Math.floor(pc.x/256),Math.floor(pc.y/256),n=>{txt.textContent='Farklı görüntüler ayıklanıyor… '+n+'/'+nWin});
+    if(u.ok){win=u.list;uniqTxt='Kışlık '+nWin+' kayıttan '+win.length+' tanesi gerçekten farklı görüntü. '}
+    else uniqTxt='Kayıt tekrarları ayıklanamadı. '
+  }
   const pick=[];const K=Math.min(24,win.length);
   for(let q=0;q<K;q++)pick.push(win[Math.floor(q*(win.length-1)/Math.max(1,K-1))]);
   const kept=[];let tried=0,got=0;const frs=[];
@@ -3687,7 +3722,7 @@ async function runSnow(lat,lon){
     await sleep(0);
   }
   if(kept.length<3){
-    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.\nKışlık '+win.length+' görüntüden '+pick.length+' denendi, '+got+' alındı. Kar oranları: '+(frs.length?frs.map(x=>'%'+x).join(' '):'—')+'\n(Kısmi karlı sayılan aralık %6–%94. Çoğu görüntü karsızsa bu bölgede kışlık kayıt yok demektir.)';
+    txt.textContent='Kısmi karlı görüntü '+kept.length+' bulundu (en az 3 gerekir). Bu nokta için kar izi sonucu yok.\n'+uniqTxt+pick.length+' denendi, '+got+' alındı. Kar oranları: '+(frs.length?frs.map(x=>'%'+x).join(' '):'—')+'\n(Kısmi karlı sayılan aralık %6–%94. Çoğu görüntü karsızsa bu bölgede kışlık kayıt yok demektir.)';
     if(!kept.length)return;
   }
   const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
@@ -3720,7 +3755,7 @@ async function runSnow(lat,lon){
     ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cw/2,cw/2,14,0,6.283);ctx.stroke();
     cap(c,'Fark: kırmızı = geç eriyen, mavi = erken eriyen');
     const mpp=mppAt(lat,z);
-    txt.textContent=kept.length+' kısmi karlı görüntü · pencere '+Math.round(cw*mpp)+' m\nGeç eriyen/tutan: %'+(100*late/N).toFixed(1)+' · erken eriyen: %'+(100*early/N).toFixed(1)+'\nDaire noktanın yeridir. Daire içinde ve çevresinde tutarlı bir leke/hat varsa bunu yorumlamak için görüntüyü sohbete at.';
+    txt.textContent=uniqTxt.trim()+'\n'+kept.length+' kısmi karlı görüntü · pencere '+Math.round(cw*mpp)+' m\nGeç eriyen/tutan: %'+(100*late/N).toFixed(1)+' · erken eriyen: %'+(100*early/N).toFixed(1)+'\nDaire noktanın yeridir. Daire içinde ve çevresinde tutarlı bir leke/hat varsa bunu yorumlamak için görüntüyü sohbete at.';
   }else txt.textContent+='\n';
 }
 $('snClose').onclick=()=>{$('snBox').hidden=true};

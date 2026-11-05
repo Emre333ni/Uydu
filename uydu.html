@@ -4174,7 +4174,7 @@ async function runS2(){
     for(let y=0;y<cw;y++)for(let xx=0;xx<cw;xx++){const xa=Math.max(0,xx-r),xb=Math.min(cw,xx+r+1),ya=Math.max(0,y-r),yb=Math.min(cw,y+r+1);
       const sm=J[yb*W+xb]-J[ya*W+xb]-J[yb*W+xa]+J[ya*W+xa];o[y*cw+xx]=need==='all'?(sm===(xb-xa)*(yb-ya)?1:0):(sm>0?1:0)}
     return o};
-  const mask=bxs(bxs(dens,5,'all'),9,'any');let nm=0;for(let i=0;i<N;i++)nm+=mask[i];
+  const mask=bxs(bxs(dens,5,'all'),7,'any');let nm=0;for(let i=0;i<N;i++)nm+=mask[i];
   const valid=N-nm;
   for(let i=0;i<N;i++){
     const m=mean[i];let R=70,G=70,B=70;

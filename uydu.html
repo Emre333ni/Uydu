@@ -269,7 +269,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 
       <label class="chk"><input type="checkbox" id="cSharp" checked> Yaklaşınca kontrastı artır (net görünsün)</label>
       <label>Görüntü filtresi
-        <select id="cFilt"><option value="">Normal</option><option value="contrast">Kontrast / detay (toprak izi, çöküntü)</option><option value="negative">Negatif (ton farkı, ters renk)</option><option value="edge">Kenar vurgusu (düz hat, kare temel)</option><option value="dstretch">DStretch (renk ayrıştırma)</option><option value="local">Yerel kontrast (sönük izler)</option><option value="veg">Bitki vurgusu (VARI, yaz)</option><option value="diff">Fark: A − B (değişen yerler)</option></select>
+        <select id="cFilt"><option value="">Normal</option><option value="contrast">Kontrast / detay (toprak izi, çöküntü)</option><option value="negative">Negatif (ton farkı, ters renk)</option><option value="edge">Kenar vurgusu (düz hat, kare temel)</option><option value="sharp">Keskinleştir (bulanık görüntü)</option><option value="dstretch">DStretch (renk ayrıştırma)</option><option value="local">Yerel kontrast (sönük izler)</option><option value="veg">Bitki vurgusu (VARI, yaz)</option><option value="diff">Fark: A − B (değişen yerler)</option></select>
       </label>
       <label class="chk" style="display:block">Parlaklık / gölge aç <input type="range" id="cGam" min="40" max="200" value="100" style="width:100%"></label>
       <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="fGam" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR id="gR" type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncG id="gG" type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncB id="gB" type="gamma" amplitude="1" exponent="1" offset="0"/></feComponentTransfer></filter></svg>
@@ -1042,6 +1042,12 @@ function pixProcess(id,mode){
     const ds=PIX.ds;if(!ds)return;const m=ds.mean,M=ds.M;
     for(let i=0;i<n;i++){const j=i*4,r=d[j]-m[0],g=d[j+1]-m[1],b=d[j+2]-m[2];
       d[j]=clamp8(128+M[0]*r+M[1]*g+M[2]*b);d[j+1]=clamp8(128+M[3]*r+M[4]*g+M[5]*b);d[j+2]=clamp8(128+M[6]*r+M[7]*g+M[8]*b)}
+  }else if(mode==='sharp'){
+    const ch=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
+    for(let i=0;i<n;i++){ch[0][i]=d[i*4];ch[1][i]=d[i*4+1];ch[2][i]=d[i*4+2]}
+    const b1=ch.map(c=>boxBlurCh(c,w,h,1)),b2=ch.map(c=>boxBlurCh(c,w,h,3));
+    for(let i=0;i<n;i++){const j=i*4;
+      for(let c=0;c<3;c++){const v=ch[c][i];d[j+c]=clamp8(v+1.5*(v-b1[c][i])+0.7*(v-b2[c][i]))}}
   }else if(mode==='local'){
     const ch=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
     for(let i=0;i<n;i++){ch[0][i]=d[i*4];ch[1][i]=d[i*4+1];ch[2][i]=d[i*4+2]}
@@ -2186,7 +2192,7 @@ const DiffTile=L.GridLayer.extend({
 });
 function removeDiff(){if(diffLayer){map.removeLayer(diffLayer);diffLayer=null}}
 async function setPix(mode){
-  const m=['dstretch','local','veg','diff'].includes(mode)?mode:'';
+  const m=['sharp','dstretch','local','veg','diff'].includes(mode)?mode:'';
   removeDiff();PIX.mode=m;setMsg('');
   if(m==='diff'){
     if(!(layer.A&&layer.B&&info.A&&info.B&&info.A.img&&info.B.img)){setMsg('Fark için A ve B katmanı uydu görüntüsü olmalı (ör. A güncel, B tarihsel).');PIX.mode='';$('cFilt').value='';applyFocus();return}

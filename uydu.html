@@ -436,8 +436,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 <div class="tmRow"><button id="tmPrev">‹</button><button id="tmPlay">❚❚</button><button id="tmNext">›</button><input id="tmSl" type="range" min="0" max="0" value="0"></div>
 <div class="tmRow"><select id="tmFlt" style="flex:1"><option value="">Normal</option><option value="sharp">Keskinleştir</option><option value="local">Yerel kontrast</option><option value="veg">Bitki (VARI)</option></select><select id="tmSp" style="flex:1"><option value="1500">Yavaş</option><option value="900" selected>Orta</option><option value="450">Hızlı</option></select></div>
 <p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
-<div id="s2Box" hidden><div><h3>Sentinel-2 bitki serisi</h3><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0"><input type="checkbox" id="s2Mask" checked> Yerleşimi (evleri) siyah maskele</label>
-<p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">NDVI = bitki canlılığı (10 m piksel). Kırmızı = çevresinden hep düşük, yeşil/mavi = çevresinden hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez.</p><div class="btns"><button id="s2Close">Kapat</button></div></div></div>
+<div id="s2Box" hidden><div><h3>Sentinel-2 bitki serisi</h3><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">NDVI = bitki canlılığı (10 m piksel). Kırmızı = çevresinden hep düşük, yeşil/mavi = çevresinden hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez.</p><div class="btns"><button id="s2Close">Kapat</button></div></div></div>
 <div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
 <div id="dlg" hidden>
   <div class="card">
@@ -4161,41 +4160,22 @@ async function runS2(){
   const acc=new Float32Array(N),cnt=new Float32Array(N);
   for(const s0 of sc){const b=bb(s0.nd,10);for(let i=0;i<N;i++){const v=s0.nd[i]-b[i];if(!isNaN(v)){acc[i]+=v;cnt[i]++}}}
   const k=mk(),x=k.getContext('2d'),im=x.createImageData(cw,cw);let hi=0,lo=0;
-  // yerleşim maskesi: kalıcı farkın küçük benekler halinde yoğun olduğu yerler (ev, bahçe, sokak)
-  const mean=new Float32Array(N),flag=new Uint8Array(N);
-  for(let i=0;i<N;i++){mean[i]=cnt[i]>=sc.length*0.6?acc[i]/cnt[i]:0;flag[i]=Math.abs(mean[i])>0.05?1:0}
-  const rr=5,W=cw+1,I=new Int32Array(W*W);
-  for(let y=0;y<cw;y++){let rs=0;for(let xx=0;xx<cw;xx++){rs+=flag[y*cw+xx];I[(y+1)*W+xx+1]=I[y*W+xx+1]+rs}}
-  const dens=new Uint8Array(N);
-  for(let y=0;y<cw;y++)for(let xx=0;xx<cw;xx++){const xa=Math.max(0,xx-rr),xb=Math.min(cw,xx+rr+1),ya=Math.max(0,y-rr),yb=Math.min(cw,y+rr+1);
-    const sm=I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa];dens[y*cw+xx]=sm/((xb-xa)*(yb-ya))>0.38?1:0}
-  // küçük tek lekeleri (gerçek iz olabilir) koru: yalnızca geniş yoğun bölgeler maskelenir
-  const bxs=(src,r,need)=>{const J=new Int32Array(W*W),o=new Uint8Array(N);
-    for(let y=0;y<cw;y++){let rs=0;for(let xx=0;xx<cw;xx++){rs+=src[y*cw+xx];J[(y+1)*W+xx+1]=J[y*W+xx+1]+rs}}
-    for(let y=0;y<cw;y++)for(let xx=0;xx<cw;xx++){const xa=Math.max(0,xx-r),xb=Math.min(cw,xx+r+1),ya=Math.max(0,y-r),yb=Math.min(cw,y+r+1);
-      const sm=J[yb*W+xb]-J[ya*W+xb]-J[yb*W+xa]+J[ya*W+xa];o[y*cw+xx]=need==='all'?(sm===(xb-xa)*(yb-ya)?1:0):(sm>0?1:0)}
-    return o};
-  const mask=bxs(bxs(dens,5,'all'),7,'any');let nm=0;for(let i=0;i<N;i++)nm+=mask[i];
+  const mean=new Float32Array(N);
+  for(let i=0;i<N;i++)mean[i]=cnt[i]>=sc.length*0.6?acc[i]/cnt[i]:0;
   const mpp=mppAt(c.lat,z);
   const capEl=document.createElement('div');capEl.className='sc';
   const dv=document.createElement('div');dv.appendChild(k);dv.appendChild(capEl);grid.appendChild(dv);
-  const paint=useMask=>{
-    let hi=0,lo=0;
-    for(let i=0;i<N;i++){
-      const m=mean[i];let R=70,G=70,B=70;
-      if(useMask&&mask[i]){R=G=B=28}
-      else if(m>0.05){R=60;G=200;B=140;hi++}else if(m<-0.05){R=255;G=70;B=70;lo++}else{const q=Math.round(90+m*600);R=G=B=q}
-      im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255;
-    }
-    x.putImageData(im,0,0);
-    x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(cw/2,cw/2,14,0,6.283);x.stroke();
-    const valid=useMask?N-nm:N;
-    capEl.textContent='Kalıcı fark'+(useMask?' (yerleşim siyah)':' (maskesiz)')+': kırmızı = hep düşük, yeşil = hep yüksek';
-    txt.textContent=sc.length+' yaz sahnesi · '+sc[0].date+' … '+sc[sc.length-1].date+' · pencere '+Math.round(cw*mpp)+' m'+(fail?' · '+fail+' sahne alınamadı':'')+
-      (useMask?'\nYerleşim maskelendi: %'+(100*nm/N).toFixed(0):'\nYerleşim maskesi kapalı')+'\nÇevresinden hep düşük: %'+(100*lo/Math.max(1,valid)).toFixed(1)+' · hep yüksek: %'+(100*hi/Math.max(1,valid)).toFixed(1)+'\nDaire noktanın yeridir. Dolgu, eski hendek veya yol bitkiyi yıllarca aynı yönde etkileyebilir; ama tarla sınırı ve toprak tipi de aynı izi verir.';
-  };
-  $('s2Mask').onchange=()=>paint($('s2Mask').checked);
-  paint($('s2Mask').checked);
+  let nHi=0,nLo=0;
+  for(let i=0;i<N;i++){
+    const m=mean[i];let R=70,G=70,B=70;
+    if(m>0.05){R=60;G=200;B=140;nHi++}else if(m<-0.05){R=255;G=70;B=70;nLo++}else{const q=Math.round(90+m*600);R=G=B=q}
+    im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255;
+  }
+  x.putImageData(im,0,0);
+  x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(cw/2,cw/2,14,0,6.283);x.stroke();
+  capEl.textContent='Kalıcı fark: kırmızı = hep düşük, yeşil = hep yüksek';
+  txt.textContent=sc.length+' yaz sahnesi · '+sc[0].date+' … '+sc[sc.length-1].date+' · pencere '+Math.round(cw*mpp)+' m'+(fail?' · '+fail+' sahne alınamadı':'')+
+    '\nÇevresinden hep düşük: %'+(100*nLo/N).toFixed(1)+' · hep yüksek: %'+(100*nHi/N).toFixed(1)+'\nDaire noktanın yeridir. Evler ve bahçeler de kırmızı-yeşil leke verir; açık tarlaya bak.';
 }
 $('s2Close').onclick=()=>{$('s2Box').hidden=true};
 $('bS2').onclick=()=>runS2().catch(e=>{$('s2Txt').textContent='Sentinel-2 hatası: '+e.message});

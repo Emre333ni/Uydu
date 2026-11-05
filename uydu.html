@@ -269,8 +269,10 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 
       <label class="chk"><input type="checkbox" id="cSharp" checked> Yaklaşınca kontrastı artır (net görünsün)</label>
       <label>Görüntü filtresi
-        <select id="cFilt"><option value="">Normal</option><option value="contrast">Kontrast / detay (toprak izi, çöküntü)</option><option value="negative">Negatif (ton farkı, ters renk)</option><option value="edge">Kenar vurgusu (düz hat, kare temel)</option></select>
+        <select id="cFilt"><option value="">Normal</option><option value="contrast">Kontrast / detay (toprak izi, çöküntü)</option><option value="negative">Negatif (ton farkı, ters renk)</option><option value="edge">Kenar vurgusu (düz hat, kare temel)</option><option value="dstretch">DStretch (renk ayrıştırma)</option><option value="local">Yerel kontrast (sönük izler)</option><option value="veg">Bitki vurgusu (VARI, yaz)</option><option value="diff">Fark: A − B (değişen yerler)</option></select>
       </label>
+      <label class="chk" style="display:block">Parlaklık / gölge aç <input type="range" id="cGam" min="40" max="200" value="100" style="width:100%"></label>
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="fGam" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR id="gR" type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncG id="gG" type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncB id="gB" type="gamma" amplitude="1" exponent="1" offset="0"/></feComponentTransfer></filter></svg>
       <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="fEdge" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feConvolveMatrix order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" divisor="1" bias="0.5" preserveAlpha="true"/><feComponentTransfer><feFuncR type="linear" slope="3.2" intercept="-1.1"/><feFuncG type="linear" slope="3.2" intercept="-1.1"/><feFuncB type="linear" slope="3.2" intercept="-1.1"/></feComponentTransfer></filter></svg>
       <div class="btns"><button id="bOff">Bu bölgeyi çevrimdışı kaydet</button><button id="bOffClr">Kayıtlıyı sil</button></div>
       <div class="hint" id="offInfo" style="margin-top:0"></div>
@@ -977,8 +979,97 @@ async function cacheGet(url){
     return r?URL.createObjectURL(await r.blob()):null;
   }catch(e){return null}
 }
+/* ---------- Piksel filtreleri: DStretch, yerel kontrast, bitki (VARI), fark ---------- */
+const PIX={mode:'',ds:null,dsC:null,dsZ:0};
+const clamp8=v=>v<0?0:v>255?255:v;
+function jacobi3(A){ // simetrik 3x3: özdeğer + özvektör
+  const V=[[1,0,0],[0,1,0],[0,0,1]],a=A.map(r=>r.slice());
+  for(let it=0;it<30;it++){
+    let p=0,q=1,mx=Math.abs(a[0][1]);
+    if(Math.abs(a[0][2])>mx){p=0;q=2;mx=Math.abs(a[0][2])}
+    if(Math.abs(a[1][2])>mx){p=1;q=2;mx=Math.abs(a[1][2])}
+    if(mx<1e-9)break;
+    const th=0.5*Math.atan2(2*a[p][q],a[q][q]-a[p][p]),c=Math.cos(th),s=Math.sin(th);
+    for(let k=0;k<3;k++){const akp=a[k][p],akq=a[k][q];a[k][p]=c*akp-s*akq;a[k][q]=s*akp+c*akq}
+    for(let k=0;k<3;k++){const apk=a[p][k],aqk=a[q][k];a[p][k]=c*apk-s*aqk;a[q][k]=s*apk+c*aqk}
+    for(let k=0;k<3;k++){const vkp=V[k][p],vkq=V[k][q];V[k][p]=c*vkp-s*vkq;V[k][q]=s*vkp+c*vkq}
+  }
+  return {val:[a[0][0],a[1][1],a[2][2]],vec:V};
+}
+function dsFromSamples(S){ // S: Float64 [n*3]
+  const n=S.length/3;let m=[0,0,0];
+  for(let i=0;i<n;i++){m[0]+=S[i*3];m[1]+=S[i*3+1];m[2]+=S[i*3+2]}
+  m=m.map(v=>v/n);
+  const C=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<n;i++){const d=[S[i*3]-m[0],S[i*3+1]-m[1],S[i*3+2]-m[2]];for(let a=0;a<3;a++)for(let b=0;b<3;b++)C[a][b]+=d[a]*d[b]}
+  for(let a=0;a<3;a++)for(let b=0;b<3;b++)C[a][b]/=n;
+  const {val,vec}=jacobi3(C),TG=48;
+  const gain=val.map(l=>Math.min(10,TG/Math.sqrt(Math.max(l,1))));
+  const M=[0,0,0,0,0,0,0,0,0];
+  for(let a=0;a<3;a++)for(let b=0;b<3;b++){let x=0;for(let k=0;k<3;k++)x+=vec[a][k]*gain[k]*vec[b][k];M[a*3+b]=x}
+  return {mean:m,M};
+}
+async function prepDS(){
+  const side=layer.A&&info.A&&info.A.img?'A':(layer.B&&info.B&&info.B.img?'B':null);
+  if(!side)return false;
+  const l=layer[side],z=Math.min(Math.round(map.getZoom()),l.options.maxNativeZoom||19),pc=map.project(map.getCenter(),z);
+  const cx=Math.floor(pc.x/256),cy=Math.floor(pc.y/256),S=[];
+  const jobs=[];
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)jobs.push(loadImg(tplUrl(info[side].url,z,cx+dx,cy+dy,info[side].subs)));
+  const ims=await Promise.all(jobs);
+  const cv=document.createElement('canvas');cv.width=cv.height=256;const cx2=cv.getContext('2d',{willReadFrequently:true});
+  for(const im of ims){
+    if(!im)continue;cx2.drawImage(im,0,0,256,256);
+    let id;try{id=cx2.getImageData(0,0,256,256).data}catch(e){return false}
+    for(let i=0;i<65536;i+=7)S.push(id[i*4],id[i*4+1],id[i*4+2]);
+  }
+  if(S.length<3000)return false;
+  PIX.ds=dsFromSamples(S);PIX.dsC=map.getCenter();PIX.dsZ=map.getZoom();
+  return true;
+}
+function boxBlurCh(src,w,h,r){ // tek kanal, integral görüntü
+  const W=w+1,I=new Float64Array(W*(h+1)),o=new Float32Array(w*h);
+  for(let y=0;y<h;y++){let row=0;for(let x=0;x<w;x++){row+=src[y*w+x];I[(y+1)*W+x+1]=I[y*W+x+1]+row}}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const xa=Math.max(0,x-r),xb=Math.min(w,x+r+1),ya=Math.max(0,y-r),yb=Math.min(h,y+r+1);
+    o[y*w+x]=(I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa])/((xb-xa)*(yb-ya));
+  }
+  return o;
+}
+function pixProcess(id,mode){
+  const d=id.data,w=id.width,h=id.height,n=w*h;
+  if(mode==='dstretch'){
+    const ds=PIX.ds;if(!ds)return;const m=ds.mean,M=ds.M;
+    for(let i=0;i<n;i++){const j=i*4,r=d[j]-m[0],g=d[j+1]-m[1],b=d[j+2]-m[2];
+      d[j]=clamp8(128+M[0]*r+M[1]*g+M[2]*b);d[j+1]=clamp8(128+M[3]*r+M[4]*g+M[5]*b);d[j+2]=clamp8(128+M[6]*r+M[7]*g+M[8]*b)}
+  }else if(mode==='local'){
+    const ch=[new Float32Array(n),new Float32Array(n),new Float32Array(n)];
+    for(let i=0;i<n;i++){ch[0][i]=d[i*4];ch[1][i]=d[i*4+1];ch[2][i]=d[i*4+2]}
+    const bl=ch.map(c=>boxBlurCh(c,w,h,18));
+    for(let i=0;i<n;i++){const j=i*4;
+      d[j]=clamp8(128+3.4*(ch[0][i]-bl[0][i]));d[j+1]=clamp8(128+3.4*(ch[1][i]-bl[1][i]));d[j+2]=clamp8(128+3.4*(ch[2][i]-bl[2][i]))}
+  }else if(mode==='veg'){
+    for(let i=0;i<n;i++){const j=i*4,r=d[j],g=d[j+1],b=d[j+2],den=g+r-b;
+      let v=den>8?(g-r)/den:0;v=(v+0.08)/0.34;v=v<0?0:v>1?1:v;   // -0.08 … 0.26
+      // kırmızı (kuru/çıplak) → sarı → yeşil (canlı bitki)
+      const R=v<.5?230:230*(1-(v-.5)*2)+20*(v-.5)*2,G=v<.5?60+170*v*2:230-60*(v-.5)*2,B=40;
+      d[j]=R;d[j+1]=G;d[j+2]=B}
+  }
+}
+function pixTile(layer,coords,done){
+  const cv=document.createElement('canvas'),sz=layer.getTileSize();cv.width=sz.x;cv.height=sz.y;
+  const url=layer.getTileUrl(coords),mode=PIX.mode;
+  loadImg(url).then(im=>{
+    if(!im){done(new Error('tile'),cv);return}
+    const cx=cv.getContext('2d',{willReadFrequently:true});cx.drawImage(im,0,0,sz.x,sz.y);
+    try{const id=cx.getImageData(0,0,sz.x,sz.y);pixProcess(id,mode);cx.putImageData(id,0,0)}catch(e){}
+    done(null,cv);
+  });
+  return cv;
+}
 const CTile=L.TileLayer.extend({
   createTile(coords,done){
+    if(PIX.mode&&PIX.mode!=='diff'&&this.options.pane!=='paneD')return pixTile(this,coords,done);
     const tile=document.createElement('img');
     tile.alt='';tile.setAttribute('role','presentation');
     L.DomEvent.on(tile,'load',L.Util.bind(this._tileOnLoad,this,done,tile));
@@ -1498,7 +1589,7 @@ function capZoom(){
 map.on('zoomend',applyFocus);
 map.on('moveend',()=>scheduleProbe());
 $('cSharp').onchange=applyFocus;
-$('cFilt').onchange=applyFocus;
+$('cFilt').onchange=()=>setPix($('cFilt').value).catch(e=>setMsg('Filtre hatası: '+e.message));
 
 async function loadImg(url){
   const cu=await cacheGet(url);
@@ -2055,13 +2146,68 @@ function applyFocus(){
   const fo=f>0?'brightness('+(1-0.55*f).toFixed(2)+') saturate('+(1-0.5*f).toFixed(2)+')':'';
   const over=['A','B'].some(k=>layer[k]&&map.getZoom()>layer[k].options.maxNativeZoom+0.01);
   const fm=$('cFilt').value;
-  const fx=fm==='contrast'?'contrast(1.55) saturate(1.3) brightness(1.05) ':fm==='negative'?'invert(1) contrast(1.2) ':fm==='edge'?'url(#fEdge) ':'';
+  const gam=+$('cGam').value!==100?'url(#fGam) ':'';
+  const fx=gam+(fm==='contrast'?'contrast(1.55) saturate(1.3) brightness(1.05) ':fm==='negative'?'invert(1) contrast(1.2) ':fm==='edge'?'url(#fEdge) ':'');
   const flt=fx+((over&&$('cSharp').checked)?'contrast(1.14) saturate(1.06) ':'')+fo;
   map.getPane('paneA').style.filter=flt.trim();
   map.getPane('paneB').style.filter=flt.trim();
   pO.style.filter=overlay?'drop-shadow(0 0 2px rgba(255,190,60,.95))':'';
   focus3d();
 }
+
+const pD=map.createPane('paneD');pD.style.zIndex=240;pD.style.pointerEvents='none';
+let diffLayer=null;
+const DiffTile=L.GridLayer.extend({
+  createTile(coords,done){
+    const cv=document.createElement('canvas');cv.width=cv.height=256;
+    const a=info.A,b=info.B;
+    if(!a||!b){done(new Error('x'),cv);return cv}
+    Promise.all([loadImg(tplUrl(a.url,coords.z,coords.x,coords.y,a.subs)),loadImg(tplUrl(b.url,coords.z,coords.x,coords.y,b.subs))]).then(([ia,ib])=>{
+      if(!ia||!ib){done(new Error('x'),cv);return}
+      const cx=cv.getContext('2d',{willReadFrequently:true});
+      try{
+        cx.drawImage(ia,0,0,256,256);const A=cx.getImageData(0,0,256,256);
+        cx.drawImage(ib,0,0,256,256);const B=cx.getImageData(0,0,256,256);
+        const da=A.data,db=B.data,n=65536;let ma=[0,0,0],mb=[0,0,0];
+        for(let i=0;i<n;i++){for(let c=0;c<3;c++){ma[c]+=da[i*4+c];mb[c]+=db[i*4+c]}}
+        ma=ma.map(v=>v/n);mb=mb.map(v=>v/n);   // tüm karedeki ışık farkı sayılmasın
+        for(let i=0;i<n;i++){
+          const j=i*4;let s=0;
+          for(let c=0;c<3;c++)s+=Math.abs((da[j+c]-ma[c])-(db[j+c]-mb[c]));
+          const v=clamp8(s*0.9);
+          da[j]=clamp8(v*3);da[j+1]=clamp8((v-90)*1.6);da[j+2]=0;da[j+3]=255;
+        }
+        cx.putImageData(A,0,0);
+      }catch(e){}
+      done(null,cv);
+    });
+    return cv;
+  }
+});
+function removeDiff(){if(diffLayer){map.removeLayer(diffLayer);diffLayer=null}}
+async function setPix(mode){
+  const m=['dstretch','local','veg','diff'].includes(mode)?mode:'';
+  removeDiff();PIX.mode=m;setMsg('');
+  if(m==='diff'){
+    if(!(layer.A&&layer.B&&info.A&&info.B&&info.A.img&&info.B.img)){setMsg('Fark için A ve B katmanı uydu görüntüsü olmalı (ör. A güncel, B tarihsel).');PIX.mode='';$('cFilt').value='';applyFocus();return}
+    const nz=Math.min(layer.A.options.maxNativeZoom||19,layer.B.options.maxNativeZoom||19);
+    diffLayer=new DiffTile({pane:'paneD',maxNativeZoom:nz,maxZoom:21,tileSize:256}).addTo(map);
+    setMsg('Fark haritası: parlak/kırmızı yerler iki tarih arasında değişen yerler. Mevsim ve ışık farkı da parlak çıkar.');
+  }else if(m==='dstretch'){
+    setMsg('DStretch hazırlanıyor…');
+    const ok=await prepDS();
+    if(!ok){setMsg('DStretch için görüntü alınamadı.');PIX.mode='';$('cFilt').value=''}else setMsg('');
+  }
+  ['A','B'].forEach(k=>{if(layer[k])layer[k].redraw()});
+  applyFocus();
+}
+map.on('moveend',()=>{
+  if(PIX.mode!=='dstretch'||!PIX.dsC)return;
+  if(map.getCenter().distanceTo(PIX.dsC)>2500||Math.abs(map.getZoom()-PIX.dsZ)>=3){
+    clearTimeout(setPix._t);setPix._t=setTimeout(async()=>{if(PIX.mode==='dstretch'&&await prepDS())['A','B'].forEach(k=>{if(layer[k])layer[k].redraw()})},700);
+  }
+});
+$('cGam').oninput=()=>{const v=+$('cGam').value,e=(100/v).toFixed(3);['gR','gG','gB'].forEach(i=>$(i).setAttribute('exponent',e));applyFocus()};
 
 function selectCand(i,move){
   if(!candData.length)return;
@@ -2845,13 +2991,15 @@ function clusterPts(pts,R,minN){
 /* Yoğunluk kümeleri: tek tek zayıf izler bir yerde yığılıyorsa orayı işaretler */
 function showDens(){
   densLayer.clearLayers();const out=$('densList');out.innerHTML='';
+  const say=t=>{out.textContent=t;setMsg(t);out.scrollIntoView({block:'nearest'})};
   const pts=lastAll.filter(f=>f&&f.lat!=null);
-  if(pts.length<4){out.textContent='Önce bir tarama yap (en az 4 iz gerekir).';return}
-  const R=150,cl=clusterPts(pts,R,3).slice(0,8);
-  if(!cl.length){out.textContent='Yığılma yok: 150 m içinde en az 3 iz olan yer çıkmadı.';return}
-  const mx=cl[0].sum;
+  if(pts.length<3){say('Küme için en az 3 iz gerekir (şimdi '+pts.length+'). Önce alan taraması ya da analiz yap.');return}
+  let R=150,cl=clusterPts(pts,R,3).slice(0,8);
+  if(!cl.length){R=300;cl=clusterPts(pts,R,3).slice(0,8)}
+  if(!cl.length){say('Yığılma yok: '+pts.length+' iz var ama 300 m içinde 3 iz bir araya gelmiyor.');return}
+  const mx=cl[0].sum,bds=[];
   cl.forEach((c,k)=>{
-    const ll=L.latLng(c.f.lat,c.f.lon),w=c.sum/mx;
+    const ll=L.latLng(c.f.lat,c.f.lon),w=c.sum/mx;bds.push(ll);
     const col=w>.75?'#ff4d4d':w>.45?'#ff9f43':'#ffd93d';
     const circ=L.circle(ll,{radius:R,color:col,weight:2,fillColor:col,fillOpacity:.18,interactive:true});
     circ.bindPopup('Küme K'+(k+1)+' · '+c.n+' iz · toplam skor '+c.sum.toFixed(1)+'\n'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5));
@@ -2863,10 +3011,15 @@ function showDens(){
     out.appendChild(b);
   });
   const note=document.createElement('p');note.className='hint';note.textContent='Yığılma kanıt değil: tarla sınırı, kaya ve karst de kümelenir. Kümeye Çapraz kontrol ve Kış izi uygula.';out.appendChild(note);
+  try{map.fitBounds(L.latLngBounds(bds).pad(0.4),{maxZoom:17})}catch(e){}
+  setMsg(cl.length+' yoğun küme bulundu ('+R+' m içinde ≥3 iz). Haritada renkli daireler.');
+  out.scrollIntoView({block:'nearest'});
 }
 $('bDens').onclick=()=>{
-  if(!lastAll.length&&lastCands.length>=4)lastAll=lastCands.map(c=>({lat:c.lat,lon:c.lon,S:+((c.text||'').match(/skor ([\d.]+)/)||[0,1])[1]}));
-  if(!lastAll.length){setMsg('Önce bir tarama ya da analiz yap.');return}showDens()};
+  if(!lastAll.length&&candData.length>=3)lastAll=candData.map(d=>({lat:d.ll.lat,lon:d.ll.lng,S:(d.c&&d.c.S)||1}));
+  if(!lastAll.length&&lastCands.length>=3)lastAll=lastCands.map(c=>({lat:c.lat,lon:c.lon,S:+((c.text||'').match(/skor ([\d.]+)/)||[0,1])[1]}));
+  if(!lastAll.length){setMsg('Önce bir tarama (alan, hat, yelpaze ya da bölge) ya da analiz yap, sonra bas.');return}
+  showDens()};
 let scanStop=false,scanBusy=false;
 function demElev(img,cw,ch){const d=img.data,el=new Float32Array(cw*ch);for(let i=0,j=0;i<el.length;i++,j+=4)el[i]=d[j]*256+d[j+1]+d[j+2]/256-32768;return el}
 const mppAt=(lat,z)=>156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z);

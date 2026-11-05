@@ -4160,18 +4160,34 @@ async function runS2(){
   const acc=new Float32Array(N),cnt=new Float32Array(N);
   for(const s0 of sc){const b=bb(s0.nd,10);for(let i=0;i<N;i++){const v=s0.nd[i]-b[i];if(!isNaN(v)){acc[i]+=v;cnt[i]++}}}
   const k=mk(),x=k.getContext('2d'),im=x.createImageData(cw,cw);let hi=0,lo=0;
+  // yerleşim maskesi: kalıcı farkın küçük benekler halinde yoğun olduğu yerler (ev, bahçe, sokak)
+  const mean=new Float32Array(N),flag=new Uint8Array(N);
+  for(let i=0;i<N;i++){mean[i]=cnt[i]>=sc.length*0.6?acc[i]/cnt[i]:0;flag[i]=Math.abs(mean[i])>0.05?1:0}
+  const rr=5,W=cw+1,I=new Int32Array(W*W);
+  for(let y=0;y<cw;y++){let rs=0;for(let xx=0;xx<cw;xx++){rs+=flag[y*cw+xx];I[(y+1)*W+xx+1]=I[y*W+xx+1]+rs}}
+  const dens=new Uint8Array(N);
+  for(let y=0;y<cw;y++)for(let xx=0;xx<cw;xx++){const xa=Math.max(0,xx-rr),xb=Math.min(cw,xx+rr+1),ya=Math.max(0,y-rr),yb=Math.min(cw,y+rr+1);
+    const sm=I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa];dens[y*cw+xx]=sm/((xb-xa)*(yb-ya))>0.38?1:0}
+  // küçük tek lekeleri (gerçek iz olabilir) koru: yalnızca geniş yoğun bölgeler maskelenir
+  const bxs=(src,r,need)=>{const J=new Int32Array(W*W),o=new Uint8Array(N);
+    for(let y=0;y<cw;y++){let rs=0;for(let xx=0;xx<cw;xx++){rs+=src[y*cw+xx];J[(y+1)*W+xx+1]=J[y*W+xx+1]+rs}}
+    for(let y=0;y<cw;y++)for(let xx=0;xx<cw;xx++){const xa=Math.max(0,xx-r),xb=Math.min(cw,xx+r+1),ya=Math.max(0,y-r),yb=Math.min(cw,y+r+1);
+      const sm=J[yb*W+xb]-J[ya*W+xb]-J[yb*W+xa]+J[ya*W+xa];o[y*cw+xx]=need==='all'?(sm===(xb-xa)*(yb-ya)?1:0):(sm>0?1:0)}
+    return o};
+  const mask=bxs(bxs(dens,5,'all'),9,'any');let nm=0;for(let i=0;i<N;i++)nm+=mask[i];
+  const valid=N-nm;
   for(let i=0;i<N;i++){
-    const m=cnt[i]>=sc.length*0.6?acc[i]/cnt[i]:0;
-    let R=70,G=70,B=70;
-    if(m>0.05){R=60;G=200;B=140;hi++}else if(m<-0.05){R=255;G=70;B=70;lo++}else{const q=Math.round(90+m*600);R=G=B=q}
+    const m=mean[i];let R=70,G=70,B=70;
+    if(mask[i]){R=G=B=28}
+    else if(m>0.05){R=60;G=200;B=140;hi++}else if(m<-0.05){R=255;G=70;B=70;lo++}else{const q=Math.round(90+m*600);R=G=B=q}
     im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255;
   }
   x.putImageData(im,0,0);
   x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(cw/2,cw/2,14,0,6.283);x.stroke();
-  cap(k,'Kalıcı fark: kırmızı = hep düşük, yeşil = hep yüksek');
+  cap(k,'Kalıcı fark (yerleşim siyah): kırmızı = hep düşük, yeşil = hep yüksek');
   const mpp=mppAt(c.lat,z);
   txt.textContent=sc.length+' yaz sahnesi · '+sc[0].date+' … '+sc[sc.length-1].date+' · pencere '+Math.round(cw*mpp)+' m'+(fail?' · '+fail+' sahne alınamadı':'')+
-    '\nÇevresinden hep düşük: %'+(100*lo/N).toFixed(1)+' · hep yüksek: %'+(100*hi/N).toFixed(1)+'\nDaire noktanın yeridir. Dolgu, eski hendek veya yol bitkiyi yıllarca aynı yönde etkileyebilir; ama tarla sınırı ve toprak tipi de aynı izi verir.';
+    '\nYerleşim maskelendi: %'+(100*nm/N).toFixed(0)+'\nÇevresinden hep düşük: %'+(100*lo/Math.max(1,valid)).toFixed(1)+' · hep yüksek: %'+(100*hi/Math.max(1,valid)).toFixed(1)+'\nDaire noktanın yeridir. Dolgu, eski hendek veya yol bitkiyi yıllarca aynı yönde etkileyebilir; ama tarla sınırı ve toprak tipi de aynı izi verir.';
 }
 $('s2Close').onclick=()=>{$('s2Box').hidden=true};
 $('bS2').onclick=()=>runS2().catch(e=>{$('s2Txt').textContent='Sentinel-2 hatası: '+e.message});

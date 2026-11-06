@@ -106,6 +106,9 @@ input[type=range]{width:100%;accent-color:var(--ember)}
 #snBox>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
 #snBox h3{margin:0 0 6px;font-size:15px}#snBox p{margin:6px 0;font-size:13px}#snBox canvas{width:100%;border-radius:6px;display:block}#snBox .sc{font-size:11px;color:#9fb0be;text-align:center}
 #densList button{display:block;width:100%;text-align:left;margin:3px 0}
+#dfBadge{position:absolute;left:8px;right:56px;top:44px;z-index:900;pointer-events:none;background:rgba(10,18,26,.82);border:1px solid #2c4256;border-radius:8px;padding:5px 8px;font-size:12px;color:#e8f0f6;line-height:1.35}
+#dfBadge[hidden]{display:none}
+#dfBadge b{color:#ffcf6b}
 #tmBox,#s2Box{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:10px}
 #tmBox[hidden],#s2Box[hidden]{display:none}
 #tmBox>div,#s2Box>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;max-width:460px;width:100%;max-height:94vh;overflow:auto}
@@ -208,7 +211,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
   <div id="msg" hidden></div>
 
   <div id="stage">
-    <div id="map"></div>
+    <div id="map"><div id="dfBadge" hidden></div></div>
     <div id="cross"></div>
     <div id="hud">--</div>
         <div id="map3d" hidden></div>
@@ -286,6 +289,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div class="hint" id="offInfo" style="margin-top:0"></div>
       <button id="bBest" style="width:100%;margin:8px 0">Bu konumda en net görüntüyü bul</button>
       <div class="btns"><button id="bTime">▶ Zaman atlaması</button><button id="bS2">Sentinel-2 bitki serisi</button></div>
+      <div class="btns"><button id="bAuto">Otomatik fark (aynı mevsim)</button></div>
       <label>Yakınlaşınca görüntü boşalıyor ya da bulanıksa: en yüksek detay seviyesi
         <select id="selDetail">
           <option value="auto" selected>Otomatik</option>
@@ -435,7 +439,8 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 <div id="tmBox" hidden><div><h3>Zaman atlaması</h3><canvas id="tmCv" width="448" height="448"></canvas><div id="tmLab"></div>
 <div class="tmRow"><button id="tmPrev">‹</button><button id="tmPlay">❚❚</button><button id="tmNext">›</button><input id="tmSl" type="range" min="0" max="0" value="0"></div>
 <div class="tmRow"><select id="tmFlt" style="flex:1"><option value="">Normal</option><option value="sharp">Keskinleştir</option><option value="local">Yerel kontrast</option><option value="veg">Bitki (VARI)</option></select><select id="tmSp" style="flex:1"><option value="1500">Yavaş</option><option value="900" selected>Orta</option><option value="450">Hızlı</option></select></div>
-<p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
+<p id="tmScore" style="white-space:pre-line;font-weight:600"></p>
+<p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir. Resme dokunursan o noktanın kaç karede hep aynı leke olduğunu söylerim.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
 <div id="s2Box" hidden><div><h3>Sentinel-2 bitki serisi</h3><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">NDVI = bitki canlılığı (10 m piksel). Kırmızı = çevresinden hep düşük, yeşil/mavi = çevresinden hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez.</p><div class="btns"><button id="s2Close">Kapat</button></div></div></div>
 <div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
 <div id="dlg" hidden>
@@ -2208,12 +2213,12 @@ const DiffTile=L.GridLayer.extend({
 function removeDiff(){if(diffLayer){map.removeLayer(diffLayer);diffLayer=null}}
 async function setPix(mode){
   const m=['sharp','dstretch','local','veg','diff'].includes(mode)?mode:'';
-  removeDiff();PIX.mode=m;setMsg('');
+  removeDiff();PIX.mode=m;setMsg('');if(m!=='diff'){PIX.diffNz=0;$('dfBadge').hidden=true}
   if(m==='diff'){
     if(!(layer.A&&layer.B&&info.A&&info.B&&info.A.img&&info.B.img)){setMsg('Fark için A ve B katmanı uydu görüntüsü olmalı (ör. A güncel, B tarihsel).');PIX.mode='';$('cFilt').value='';applyFocus();return}
-    const nz=Math.min(layer.A.options.maxNativeZoom||19,layer.B.options.maxNativeZoom||19);
+    const nz=PIX.diffNz||Math.min(layer.A.options.maxNativeZoom||19,layer.B.options.maxNativeZoom||19);
     diffLayer=new DiffTile({pane:'paneD',maxNativeZoom:nz,maxZoom:21,tileSize:256}).addTo(map);
-    setMsg('Fark haritası: parlak/kırmızı yerler iki tarih arasında değişen yerler. Mevsim ve ışık farkı da parlak çıkar.');
+    setMsg('');diffBadge();
   }else if(m==='dstretch'){
     setMsg('DStretch hazırlanıyor…');
     const ok=await prepDS();
@@ -4027,6 +4032,63 @@ async function runAround(){
 }
 $('bAround').onclick=()=>runAround().catch(e=>{scanBusy=false;$('bScan').disabled=false;$('bFan').disabled=false;$('bAround').disabled=false;$('bScanStop').style.display='none';setMsg('Çevre taraması başarısız: '+e.message)});
 
+function diffBadge(extra){
+  const b=$('dfBadge');if(!b)return;
+  const A=info.A,B=info.B;
+  const dateOf=(k,s)=>{const it=wbItems.find(w=>w.url===s.url);return s.kind==='wb'&&it?it.date:(s.kind==='esri'?'Esri güncel':s.kind)};
+  if(PIX.mode!=='diff'||!A||!B){b.hidden=true;return}
+  const da=dateOf('A',A),db=dateOf('B',B);
+  const warn=(A.kind!=='wb'||B.kind!=='wb')?'<br><b>Uyarı:</b> biri güncel Esri, diğeri eski görüntü. Netlik farkı her kenarı parlatır. İki tarihi de Tarihsel seç ya da Otomatik fark kullan.':'';
+  b.innerHTML='Fark: <b>A '+da+'</b> ↔ <b>B '+db+'</b>'+(extra?' · '+extra:'')+'<br>Parlak = iki tarih arasında değişen. Kenar çizgisi = gerçek değişim değil.'+warn;
+  b.hidden=false;
+}
+['dateA','dateB','selA','selB'].forEach(id=>$(id).addEventListener('change',()=>setTimeout(()=>diffBadge(),50)));
+
+/* ---------- Otomatik fark: aynı mevsim + aynı çözünürlük + en uzak iki tarih ---------- */
+async function runAutoDiff(){
+  if(is3d){setMsg('Önce 2B görünüme dönün.');return}
+  if(!wbItems.length){setMsg('Tarihsel görüntü listesi yüklenmedi.');return}
+  const btn=$('bAuto');btn.disabled=true;
+  try{
+    const c=map.getCenter();let z=Math.max(15,Math.min(19,Math.round(map.getZoom())));
+    setMsg('Otomatik fark: farklı görüntüler ayıklanıyor…');
+    let pc=map.project(c,z);
+    const all=wbItems.slice();
+    const u=await waybackUnique(all,z,Math.floor(pc.x/256),Math.floor(pc.y/256),n=>setMsg('Otomatik fark: ayıklanıyor '+n+'/'+all.length));
+    const list=(u.ok?u.list:all).slice().sort((a,b)=>a.date<b.date?-1:1);
+    const has=async(it,zz)=>{const t=map.project(c,zz);return !!(await loadImg(tplUrl(it.url,zz,Math.floor(t.x/256),Math.floor(t.y/256),null)))};
+    let zz=z,okList=[];
+    for(const z0 of [z,z-1,z-2,z-3]){
+      if(z0<15)break;
+      setMsg('Otomatik fark: görüntü var mı bakılıyor (z'+z0+')…');
+      const flags=[];
+      for(let i=0;i<list.length;i+=6){const part=list.slice(i,i+6);const r=await Promise.all(part.map(it=>has(it,z0)));part.forEach((it,k)=>flags.push(r[k]?it:null))}
+      const good=flags.filter(Boolean);
+      if(good.length>=3){zz=z0;okList=good;break}
+    }
+    if(okList.length<2){setMsg('Bu noktada karşılaştırılacak yeterli görüntü yok.');return}
+    // aynı mevsim (ay farkı <=1) ve en az 1 yıl arayla; en uzak çifti seç
+    const mon=d=>+d.slice(5,7),day=d=>Date.parse(d);
+    let best=null;
+    for(let i=0;i<okList.length;i++)for(let j=i+1;j<okList.length;j++){
+      const a=okList[i],b=okList[j],gap=(day(b.date)-day(a.date))/864e5;
+      let dm=Math.abs(mon(a.date)-mon(b.date));dm=Math.min(dm,12-dm);
+      if(dm>1||gap<365)continue;
+      if(!best||gap>best.gap)best={a,b,gap};
+    }
+    if(!best){setMsg('Bu noktada aynı mevsimden, en az 1 yıl arayla iki farklı görüntü yok. Zaman atlamasına bak.');return}
+    const ia=wbItems.findIndex(w=>w.url===best.b.url),ib=wbItems.findIndex(w=>w.url===best.a.url);
+    $('selA').value='wb';$('selB').value='wb';
+    $('dateA').selectedIndex=ia;$('dateB').selectedIndex=ib;
+    setLayer('A');setLayer('B');
+    PIX.diffNz=zz;
+    $('cFilt').value='diff';
+    await setPix('diff');
+    diffBadge('aynı mevsim · z'+zz+' · '+Math.round(best.gap/365*10)/10+' yıl arayla · '+okList.length+' farklı görüntüden seçildi');
+  }finally{btn.disabled=false}
+}
+$('bAuto').onclick=()=>runAutoDiff().catch(e=>{$('bAuto').disabled=false;setMsg('Otomatik fark başarısız: '+e.message)});
+
 /* ---------- Zaman atlaması: aynı yerin farklı tüm Wayback görüntüleri art arda ---------- */
 let tmState=null;
 function tmStop(){if(tmState){clearTimeout(tmState.timer);tmState.playing=false;tmState.dead=true}}
@@ -4057,6 +4119,32 @@ async function runTime(){
   pc=map.project(c,z);const x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
   const sig=id=>{const d=id.data,o=[];for(let i=0;i<d.length;i+=4*997)o.push(d[i]+d[i+1]+d[i+2]);return o};
   let prevSig=null;
+  const lumOf=f=>{if(f.lum)return f.lum;const d=f.img.data,o=new Float32Array(cw*cw);for(let i=0;i<cw*cw;i++)o[i]=0.3*d[i*4]+0.59*d[i*4+1]+0.11*d[i*4+2];return f.lum=o};
+  const contrast=(L,px,py)=>{
+    const r0=3,r1=9,r2=15;let s0=0,n0=0,s1=0,n1=0;
+    for(let y=Math.max(0,py-r2);y<=Math.min(cw-1,py+r2);y++)for(let x=Math.max(0,px-r2);x<=Math.min(cw-1,px+r2);x++){
+      const d=Math.hypot(x-px,y-py);
+      if(d<=r0){s0+=L[y*cw+x];n0++}else if(d>=r1&&d<=r2){s1+=L[y*cw+x];n1++}
+    }
+    return n0&&n1?s0/n0-s1/n1:0;
+  };
+  const noiseOf=f=>{if(f.sig)return f.sig;const L=lumOf(f),a=[];let sd=1234567;
+    for(let k=0;k<160;k++){sd=(sd*1103515245+12345)&0x7fffffff;const x=20+sd%(cw-40);sd=(sd*1103515245+12345)&0x7fffffff;const y=20+sd%(cw-40);a.push(Math.abs(contrast(L,x,y)))}
+    a.sort((p,q)=>p-q);return f.sig=Math.max(1.5,1.4826*a[80]);};
+  const score=(px,py)=>{
+    const rows=st.frames.map(f=>{const dv=contrast(lumOf(f),px,py),z0=dv/noiseOf(f);return {date:f.date,z:z0}});
+    const on=rows.filter(r=>Math.abs(r.z)>=3);
+    const pos=on.filter(r=>r.z>0).length,neg=on.length-pos,n=rows.length;
+    const sign=pos>=neg?'açık':'koyu',same=Math.max(pos,neg);
+    let verdict;
+    if(same>=Math.ceil(n*0.75))verdict='Kalıcı: her yıl aynı yerde. Tarla işi veya geçici yığın olma ihtimali düşük.';
+    else if(same<=Math.floor(n*0.3))verdict='Geçici veya yok: çoğu karede görünmüyor. Tarla işi, ot veya yığın.';
+    else verdict='Kararsız: bazı karelerde var, bazılarında yok.';
+    return same+'/'+n+' karede çevresinden belirgin '+sign+' leke\n'+verdict+'\n'+rows.map(r=>r.date.slice(0,7)+(Math.abs(r.z)>=3?(r.z>0?' ▲':' ▼'):' ·')).join('  ');
+  };
+  st.pick={x:cw/2,y:cw/2};
+  st.score=()=>{if(st.frames.length<3){$('tmScore').textContent='';return}
+    $('tmScore').textContent='Seçilen nokta: '+score(Math.round(st.pick.x),Math.round(st.pick.y))};
   const draw=()=>{
     if(!st.frames.length)return;
     const f=st.frames[Math.min(st.i,st.frames.length-1)];
@@ -4064,6 +4152,7 @@ async function runTime(){
     if(m){id=new ImageData(new Uint8ClampedArray(f.img.data),cw,cw);pixProcess(id,m)}
     ctx.putImageData(id,0,0);
     ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cw/2-12,cw/2);ctx.lineTo(cw/2+12,cw/2);ctx.moveTo(cw/2,cw/2-12);ctx.lineTo(cw/2,cw/2+12);ctx.stroke();
+    if(st.pick&&(st.pick.x!==cw/2||st.pick.y!==cw/2)){ctx.strokeStyle='#ffcf6b';ctx.beginPath();ctx.arc(st.pick.x,st.pick.y,10,0,6.283);ctx.stroke()}
     lab.textContent=f.date+'  ('+(st.i+1)+'/'+st.frames.length+')';
     sl.max=Math.max(0,st.frames.length-1);sl.value=st.i;
   };
@@ -4092,11 +4181,16 @@ async function runTime(){
   if(st.dead)return;
   txt.textContent=st.frames.length+' farklı görüntü'+zNote+' ('+nUniq+' kayıttan; '+(u.ok?'tekrarlar ayıklandı':'tekrar ayıklaması yapılamadı')+'). Kare: '+(c.lat.toFixed(5))+', '+(c.lng.toFixed(5))+'.';
   if(st.frames.length<2)txt.textContent+='\nBu noktada karşılaştırılacak yeterli görüntü yok.';
+  else if(st.score)st.score();
 }
 $('tmPlay').onclick=()=>{if(!tmState)return;tmState.playing=!tmState.playing;$('tmPlay').textContent=tmState.playing?'❚❚':'▶';if(tmState.playing){clearTimeout(tmState.timer);tmState.timer=setTimeout(tmState.tick,200)}};
 $('tmPrev').onclick=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=(tmState.i-1+tmState.frames.length)%tmState.frames.length;tmState.draw()};
 $('tmNext').onclick=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=(tmState.i+1)%tmState.frames.length;tmState.draw()};
 $('tmSl').oninput=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=+$('tmSl').value;tmState.draw()};
+$('tmCv').onclick=e=>{if(!tmState||tmState.frames.length<3)return;const r=$('tmCv').getBoundingClientRect(),cwv=$('tmCv').width;
+  const x=Math.round((e.clientX-r.left)/r.width*cwv),y=Math.round((e.clientY-r.top)/r.height*cwv);
+  if(x<16||y<16||x>cwv-16||y>cwv-16){$('tmScore').textContent='Kenara çok yakın. Biraz içeri dokun.';return}
+  tmState.pick={x,y};tmState.draw();tmState.score()};
 $('tmFlt').onchange=()=>{if(tmState&&tmState.draw)tmState.draw()};
 $('tmClose').onclick=()=>{tmStop();tmState=null;$('tmBox').hidden=true};
 $('bTime').onclick=()=>runTime().catch(e=>{$('tmTxt').textContent='Zaman atlaması başarısız: '+e.message});

@@ -4117,6 +4117,7 @@ async function runTime(){
     if(ok.filter(Boolean).length>=Math.min(5,Math.ceil(sample.length/3))){if(zz!==z){z=zz;zNote=' (z'+zz+', daha yükseği yok)'}break}
   }
   pc=map.project(c,z);const x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
+  st.mpp=mppAt(c.lat,z);st.c=c;
   const sig=id=>{const d=id.data,o=[];for(let i=0;i<d.length;i+=4*997)o.push(d[i]+d[i+1]+d[i+2]);return o};
   let prevSig=null;
   const lumOf=f=>{if(f.lum)return f.lum;const d=f.img.data,o=new Float32Array(cw*cw);for(let i=0;i<cw*cw;i++)o[i]=0.3*d[i*4]+0.59*d[i*4+1]+0.11*d[i*4+2];return f.lum=o};
@@ -4144,7 +4145,9 @@ async function runTime(){
   };
   st.pick={x:cw/2,y:cw/2};
   st.score=()=>{if(st.frames.length<3){$('tmScore').textContent='';return}
-    $('tmScore').textContent='Seçilen nokta: '+score(Math.round(st.pick.x),Math.round(st.pick.y))};
+    const px=Math.round(st.pick.x),py=Math.round(st.pick.y),dx=(px-cw/2)*(st.mpp||1),dy=(py-cw/2)*(st.mpp||1);
+    const lat=st.c.lat-dy/110540,lon=st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180));
+    $('tmScore').textContent='Dokunulan yer: '+lat.toFixed(5)+', '+lon.toFixed(5)+' (artıdan '+Math.round(Math.abs(dx))+' m '+(dx>=0?'doğu':'batı')+', '+Math.round(Math.abs(dy))+' m '+(dy>=0?'güney':'kuzey')+')\n'+score(px,py)};
   const draw=()=>{
     if(!st.frames.length)return;
     const f=st.frames[Math.min(st.i,st.frames.length-1)];
@@ -4187,10 +4190,14 @@ $('tmPlay').onclick=()=>{if(!tmState)return;tmState.playing=!tmState.playing;$('
 $('tmPrev').onclick=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=(tmState.i-1+tmState.frames.length)%tmState.frames.length;tmState.draw()};
 $('tmNext').onclick=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=(tmState.i+1)%tmState.frames.length;tmState.draw()};
 $('tmSl').oninput=()=>{if(!tmState||!tmState.frames.length)return;tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);tmState.i=+$('tmSl').value;tmState.draw()};
-$('tmCv').onclick=e=>{if(!tmState||tmState.frames.length<3)return;const r=$('tmCv').getBoundingClientRect(),cwv=$('tmCv').width;
+const tmTap=e=>{if(!tmState||tmState.frames.length<3){$('tmScore').textContent='Kareler yükleniyor, birkaç saniye bekle.';return}
+  const r=$('tmCv').getBoundingClientRect(),cwv=$('tmCv').width;
   const x=Math.round((e.clientX-r.left)/r.width*cwv),y=Math.round((e.clientY-r.top)/r.height*cwv);
   if(x<16||y<16||x>cwv-16||y>cwv-16){$('tmScore').textContent='Kenara çok yakın. Biraz içeri dokun.';return}
-  tmState.pick={x,y};tmState.draw();tmState.score()};
+  tmState.playing=false;$('tmPlay').textContent='▶';clearTimeout(tmState.timer);
+  tmState.pick={x,y};$('tmScore').textContent='Hesaplanıyor…';
+  setTimeout(()=>{tmState.draw();tmState.score()},20)};
+$('tmCv').addEventListener('pointerup',tmTap);
 $('tmFlt').onchange=()=>{if(tmState&&tmState.draw)tmState.draw()};
 $('tmClose').onclick=()=>{tmStop();tmState=null;$('tmBox').hidden=true};
 $('bTime').onclick=()=>runTime().catch(e=>{$('tmTxt').textContent='Zaman atlaması başarısız: '+e.message});

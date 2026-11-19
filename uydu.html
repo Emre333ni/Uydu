@@ -170,30 +170,6 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 </style>
 </head>
 <body>
-<div id="gate" style="position:fixed;inset:0;z-index:2147483647;background:#0e1620;display:none;align-items:center;justify-content:center;padding:16px">
-  <form id="gateF" style="width:100%;max-width:320px;display:grid;gap:10px;font-family:-apple-system,system-ui,sans-serif;color:#e8eef4">
-    <b style="font-size:20px">Bozkurt Uydu</b>
-    <input id="gateP" type="password" autocomplete="current-password" placeholder="Şifre" style="padding:12px;border-radius:10px;border:1px solid #38485a;background:#16212d;color:#fff">
-    <button type="submit" style="padding:12px;border-radius:10px;border:0;background:#6cc3ea;color:#06121c;font-weight:700">Gir</button>
-    <span id="gateM" style="font-size:13px;color:#ff8a80;min-height:16px"></span>
-  </form>
-</div>
-<script>
-(function(){
-  const H="c5c4d1efbfe49e159ccbd132a5aff34a77df96f3ce85fb25fe0067027eacd0e5",K='uydu-giris',g=document.getElementById('gate');
-  let ok=false;try{ok=localStorage.getItem(K)===H}catch(e){}
-  if(ok)return;
-  g.style.display='flex';
-  const hex=async t=>{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')};
-  document.getElementById('gateF').onsubmit=async e=>{
-    e.preventDefault();
-    const v=document.getElementById('gateP').value.trim().toLowerCase();
-    let h='';try{h=await hex('bozkurt-uydu|'+v)}catch(x){document.getElementById('gateM').textContent='Tarayıcı şifre denetimini desteklemiyor';return}
-    if(h===H){try{localStorage.setItem(K,H)}catch(x){}g.style.display='none'}
-    else{document.getElementById('gateM').textContent='Şifre yanlış';document.getElementById('gateP').value=''}
-  };
-})();
-</script>
 
 <div id="splash"><div>
   <div data-wolf="120"></div>
@@ -289,7 +265,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div class="btns"><button id="bOff">Bu bölgeyi çevrimdışı kaydet</button><button id="bOffClr">Kayıtlıyı sil</button></div>
       <div class="hint" id="offInfo" style="margin-top:0"></div>
       <button id="bBest" style="width:100%;margin:8px 0">Bu konumda en net görüntüyü bul</button>
-      <div class="btns"><button id="bTime">▶ Zaman atlaması</button><button id="bS2">Sentinel-2 bitki serisi</button></div>
+      <div class="btns"><button id="bTime">▶ Zaman atlaması</button><button id="bS2">Uydu serisi (bitki, nem, radar)</button></div>
       <div class="btns"><button id="bAuto">Otomatik fark (aynı mevsim)</button></div>
       <label>Yakınlaşınca görüntü boşalıyor ya da bulanıksa: en yüksek detay seviyesi
         <select id="selDetail">
@@ -441,8 +417,9 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 <div class="tmRow"><button id="tmPrev">‹</button><button id="tmPlay">❚❚</button><button id="tmNext">›</button><input id="tmSl" type="range" min="0" max="0" value="0"></div>
 <div class="tmRow"><select id="tmFlt" style="flex:1"><option value="">Normal</option><option value="sharp">Keskinleştir</option><option value="local">Yerel kontrast</option><option value="veg">Bitki (VARI)</option></select><select id="tmSp" style="flex:1"><option value="1500">Yavaş</option><option value="900" selected>Orta</option><option value="450">Hızlı</option></select></div>
 <p id="tmScore" style="white-space:pre-line;font-weight:600"></p>
+<div class="btns"><button id="tmPers">Kalıcı iz haritası</button></div><canvas id="tmPersCv" width="448" height="448" hidden></canvas><p id="tmPersTxt" style="white-space:pre-line"></p>
 <p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir. Resme dokunursan o noktanın kaç karede hep aynı leke olduğunu söylerim.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
-<div id="s2Box" hidden><div><h3>Sentinel-2 bitki serisi</h3><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">NDVI = bitki canlılığı (10 m piksel). Kırmızı = çevresinden hep düşük, yeşil/mavi = çevresinden hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez.</p><div class="btns"><button id="s2Close">Kapat</button></div></div></div>
+<div id="s2Box" hidden><div><h3>Uydu serisi (Sentinel)</h3><select id="s2Idx" style="width:100%;margin-bottom:6px"><option value="ndvi">Bitki canlılığı (NDVI)</option><option value="ndmi">Nem (NDMI)</option><option value="ndre">Bitki stresi (kırmızı kenar, NDRE)</option><option value="s1">Radar nem/pürüz (Sentinel-1)</option></select><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Piksel 10 m (radarda ~10 m, gürültülü). Kırmızı = çevresinden hep düşük, yeşil = hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez. Tünel/oda doğrudan görünmez; yalnız üstündeki nem ve bitki farkı.</p><div class="btns"><button id="s2Run">Çalıştır</button><button id="s2Close">Kapat</button></div></div></div>
 <div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
 <div id="dlg" hidden>
   <div class="card">
@@ -4102,7 +4079,7 @@ async function runTime(){
   if(tmState)tmStop();
   const cv=$('tmCv'),ctx=cv.getContext('2d'),lab=$('tmLab'),sl=$('tmSl'),txt=$('tmTxt'),c=map.getCenter();
   const st=tmState={frames:[],i:0,playing:true,timer:null,dead:false};
-  $('tmBox').hidden=false;txt.textContent='Farklı görüntüler ayıklanıyor…';lab.textContent='';
+  $('tmBox').hidden=false;txt.textContent='Farklı görüntüler ayıklanıyor…';lab.textContent='';$('tmPersCv').hidden=true;$('tmPersTxt').textContent='';
   const cw=448;cv.width=cw;cv.height=cw;ctx.fillStyle='#000';ctx.fillRect(0,0,cw,cw);
   let z=Math.max(15,Math.min(19,Math.round(map.getZoom())));
   let pc=map.project(c,z),tx=Math.floor(pc.x/256),ty=Math.floor(pc.y/256);
@@ -4203,52 +4180,127 @@ const tmTap=e=>{if(!tmState||tmState.frames.length<3){$('tmScore').textContent='
   tmState.pick={x,y};$('tmScore').textContent='Hesaplanıyor…';
   setTimeout(()=>{tmState.draw();tmState.score()},20)};
 $('tmCv').addEventListener('pointerup',tmTap);
+function boxF(src,w,r){const W=w+1,I=new Float64Array(W*W),o=new Float32Array(w*w);
+  for(let y=0;y<w;y++){let rs=0;for(let x=0;x<w;x++){rs+=src[y*w+x];I[(y+1)*W+x+1]=I[y*W+x+1]+rs}}
+  for(let y=0;y<w;y++)for(let x=0;x<w;x++){const xa=Math.max(0,x-r),xb=Math.min(w,x+r+1),ya=Math.max(0,y-r),yb=Math.min(w,y+r+1);
+    o[y*w+x]=(I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa])/((xb-xa)*(yb-ya))}
+  return o}
+function runPersist(){
+  const st=tmState,out=$('tmPersTxt'),cv=$('tmPersCv');
+  if(!st||st.frames.length<4){out.textContent='Önce kareler yüklensin (en az 4).';return}
+  const cw=448,N=cw*cw,fr=[];let snow=0;
+  for(const f of st.frames){if(CORE.snowFrac(f.img.data,cw,cw)>0.35){snow++;continue}fr.push(f)}
+  if(fr.length<4){out.textContent='Karsız kare az ('+fr.length+'). Harita çıkarılamadı.';return}
+  const sum=new Float32Array(N),pos=new Uint8Array(N),neg=new Uint8Array(N);let base=null;
+  for(const f of fr){
+    const d=f.img.data,L=new Float32Array(N);for(let i=0;i<N;i++)L[i]=0.3*d[i*4]+0.59*d[i*4+1]+0.11*d[i*4+2];
+    if(!base)base=L;
+    const dev=boxF(L,cw,1),bg=boxF(L,cw,12),dv=new Float32Array(N);for(let i=0;i<N;i++)dv[i]=dev[i]-bg[i];
+    const a=[];for(let i=0;i<N;i+=7)a.push(Math.abs(dv[i]));a.sort((p,q)=>p-q);
+    const sg=Math.max(0.8,1.4826*a[a.length>>1]);
+    for(let i=0;i<N;i++){const zz=dv[i]/sg;sum[i]+=zz;if(zz>=1.5)pos[i]++;else if(zz<=-1.5)neg[i]++}
+  }
+  const n=fr.length,need=Math.ceil(n*0.75),ctx=cv.getContext('2d'),im=ctx.createImageData(cw,cw);
+  const q=new Uint8Array(N);let nq=0;
+  for(let i=0;i<N;i++){
+    const g=Math.round(base[i]*0.6);let R=g,G=g,B=g;const m=sum[i]/n;
+    if(neg[i]>=need&&m<-2){R=255;G=60;B=60;q[i]=1;nq++}
+    else if(pos[i]>=need&&m>2){R=60;G=220;B=255;q[i]=2;nq++}
+    im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255}
+  ctx.putImageData(im,0,0);
+  // en güçlü kümeler
+  const cand=[];for(let i=0;i<N;i++)if(q[i])cand.push(i);
+  cand.sort((a,b)=>Math.abs(sum[b])-Math.abs(sum[a]));
+  const peaks=[];
+  for(const i of cand){
+    const px=i%cw,py=(i/cw)|0;if(px<10||py<10||px>cw-10||py>cw-10)continue;
+    if(peaks.some(p=>Math.hypot(p.x-px,p.y-py)<25))continue;
+    let cn=0;for(let y=py-5;y<=py+5;y++)for(let x=px-5;x<=px+5;x++)if(q[y*cw+x]===q[i])cn++;
+    if(cn<8)continue;
+    peaks.push({x:px,y:py,m:sum[i]/n,k:q[i],cn});if(peaks.length>=6)break}
+  peaks.forEach((p,k)=>{ctx.strokeStyle='#ffcf6b';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,13,0,6.283);ctx.stroke();ctx.fillStyle='#ffcf6b';ctx.font='bold 14px sans-serif';ctx.fillText(String(k+1),p.x+14,p.y-10)});
+  cv.hidden=false;
+  const mpp=st.mpp||1;
+  out.textContent=n+' karsız kare'+(snow?' ('+snow+' karlı kare atıldı)':'')+' · '+(100*nq/N).toFixed(1)+'% piksel kalıcı\nKırmızı = hep çevresinden koyu, mavi = hep açık. Sarı daireler en güçlü kümeler:\n'+
+    (peaks.length?peaks.map((p,k)=>{const dx=(p.x-cw/2)*mpp,dy=(p.y-cw/2)*mpp;return (k+1)+') '+(st.c.lat-dy/110540).toFixed(5)+', '+(st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180))).toFixed(5)+' · '+(p.k===1?'koyu':'açık')+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m'}).join('\n'):'Güçlü kalıcı küme yok.')+
+    '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.';
+}
+$('tmPers').onclick=()=>{try{runPersist()}catch(e){$('tmPersTxt').textContent='Kalıcı iz hatası: '+e.message}};
 $('tmFlt').onchange=()=>{if(tmState&&tmState.draw)tmState.draw()};
 $('tmClose').onclick=()=>{tmStop();tmState=null;$('tmBox').hidden=true};
 $('bTime').onclick=()=>runTime().catch(e=>{$('tmTxt').textContent='Zaman atlaması başarısız: '+e.message});
 
 /* ---------- Sentinel-2 bitki serisi (Microsoft Planetary Computer, ücretsiz) ---------- */
 const PC_API='https://planetarycomputer.microsoft.com/api';
+let s2Tok=0;
 async function runS2(){
-  const box=$('s2Box'),grid=$('s2Grid'),txt=$('s2Txt'),c=map.getCenter();
-  grid.innerHTML='';box.hidden=false;txt.textContent='Sentinel-2 sahneleri aranıyor…';
-  const d=0.006;   // ≈ ±0,6 km
+  const tok=++s2Tok;
+  const idx=$('s2Idx').value,box=$('s2Box'),grid=$('s2Grid'),txt=$('s2Txt'),c=map.getCenter();
+  const CFG={
+    ndvi:{coll:'sentinel-2-l2a',bands:['B04','B08'],lo:-0.1,hi:0.8,thr:0.05,name:'NDVI'},
+    ndmi:{coll:'sentinel-2-l2a',bands:['B11','B08'],lo:-0.3,hi:0.5,thr:0.04,name:'NDMI (nem)'},
+    ndre:{coll:'sentinel-2-l2a',bands:['B05','B08'],lo:-0.1,hi:0.6,thr:0.04,name:'NDRE (kırmızı kenar)'},
+    s1:{coll:'sentinel-1-rtc',bands:['vv'],lo:-22,hi:-5,thr:0.8,name:'Radar VV (dB)'}
+  }[idx];
+  const isS1=idx==='s1';
+  grid.innerHTML='';box.hidden=false;txt.textContent=(isS1?'Sentinel-1':'Sentinel-2')+' sahneleri aranıyor…';
+  const d=0.006;
   let items=[];
   try{
     const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),20000);
-    const r=await fetch(PC_API+'/stac/v1/search',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,
-      body:JSON.stringify({collections:['sentinel-2-l2a'],bbox:[c.lng-d,c.lat-d,c.lng+d,c.lat+d],datetime:'2017-01-01T00:00:00Z/'+new Date().toISOString().slice(0,10)+'T00:00:00Z',limit:300,query:{'eo:cloud_cover':{lt:15}},sortby:[{field:'datetime',direction:'desc'}]})});
+    const body={collections:[CFG.coll],bbox:[c.lng-d,c.lat-d,c.lng+d,c.lat+d],datetime:'2017-01-01T00:00:00Z/'+new Date().toISOString().slice(0,10)+'T00:00:00Z',limit:300,sortby:[{field:'datetime',direction:'desc'}]};
+    if(!isS1)body.query={'eo:cloud_cover':{lt:15}};
+    const r=await fetch(PC_API+'/stac/v1/search',{method:'POST',headers:{'Content-Type':'application/json'},signal:ctl.signal,body:JSON.stringify(body)});
     clearTimeout(to);
     if(!r.ok)throw new Error('http '+r.status);
-    const j=await r.json();items=(j.features||[]).map(f=>({id:f.id,date:(f.properties.datetime||'').slice(0,10),cc:f.properties['eo:cloud_cover']}));
-  }catch(e){txt.textContent='Sentinel-2 arama başarısız ('+(e.name==='AbortError'?'zaman aşımı':e.message)+'). Planetary Computer\'a ulaşılamadı.';return}
-  const seen=new Set(),summer=[];
-  for(const it of items){const m=+it.date.slice(5,7);if(m<5||m>9||seen.has(it.date))continue;seen.add(it.date);summer.push(it)}
+    const j=await r.json();if(tok!==s2Tok)return;items=(j.features||[]).map(f=>({id:f.id,date:(f.properties.datetime||'').slice(0,10),cc:f.properties['eo:cloud_cover'],orb:f.properties['sat:relative_orbit'],ost:f.properties['sat:orbit_state']}));
+  }catch(e){txt.textContent='Arama başarısız ('+(e.name==='AbortError'?'zaman aşımı':e.message)+'). Planetary Computer\'a ulaşılamadı.';return}
+  const m0=isS1?4:5,m1=isS1?10:9;
+  const seen=new Set();let summer=[];
+  for(const it of items){const m=+it.date.slice(5,7);if(m<m0||m>m1||seen.has(it.date))continue;seen.add(it.date);summer.push(it)}
+  let orbNote='';
+  if(isS1&&summer.length){   // aynı yörünge: açı farkı parlaklığı bozmasın
+    const cnt={};summer.forEach(it=>{const k=it.orb+'/'+it.ost;cnt[k]=(cnt[k]||0)+1});
+    const best=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+    summer=summer.filter(it=>it.orb+'/'+it.ost===best);orbNote=' · yörünge '+best;
+  }
   summer.sort((a,b)=>a.date<b.date?-1:1);
-  if(summer.length<3){txt.textContent='Bu noktada bulutsuz yaz sahnesi az ('+summer.length+'). Bitki serisi çıkarılamadı.';return}
+  if(summer.length<3){txt.textContent='Bu noktada uygun '+(isS1?'radar':'bulutsuz yaz')+' sahnesi az ('+summer.length+'). Seri çıkarılamadı.';return}
   const K=Math.min(12,summer.length),pick=[];
   for(let q=0;q<K;q++)pick.push(summer[Math.floor(q*(summer.length-1)/Math.max(1,K-1))]);
   const z=15,cw=384,pc=map.project(c,z),x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
-  const tile=(id,band)=>PC_API+'/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}.png?collection=sentinel-2-l2a&item='+encodeURIComponent(id)+'&assets='+band+'&rescale=0,5000&format=png';
-  const sc=[];let fail=0;
+  const tile=(id,band)=>PC_API+'/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}.png?collection='+CFG.coll+'&item='+encodeURIComponent(id)+'&assets='+band+'&rescale='+(isS1?'0,0.3':'0,5000')+'&format=png';
+  const sc=[];let fail=0;const N=cw*cw;
   for(let k=0;k<pick.length;k++){
+    if(tok!==s2Tok)return;
     txt.textContent='Sahne '+(k+1)+'/'+pick.length+' indiriliyor… ('+sc.length+' tamam)';
     try{
-      const [r,n]=await Promise.all([grabTiles(tile(pick[k].id,'B04'),null,z,x0,y0,cw,cw),grabTiles(tile(pick[k].id,'B08'),null,z,x0,y0,cw,cw)]);
-      if(r.error||n.error){fail++;continue}
-      const N=cw*cw,nd=new Float32Array(N);let valid=0;
-      for(let i=0;i<N;i++){const a=r.data.data[i*4+3],R=r.data.data[i*4],Nn=n.data.data[i*4];
-        if(a<200||R+Nn<8){nd[i]=NaN;continue}
-        nd[i]=(Nn-R)/(Nn+R);valid++}
+      const gs=await Promise.all(CFG.bands.map(bn=>grabTiles(tile(pick[k].id,bn),null,z,x0,y0,cw,cw)));
+      if(tok!==s2Tok)return;
+      if(gs.some(g=>g.error)){fail++;continue}
+      const nd=new Float32Array(N);let valid=0;
+      if(isS1){
+        const D=gs[0].data.data;
+        for(let i=0;i<N;i++){const a=D[i*4+3],v=D[i*4];
+          if(a<200||v<2){nd[i]=NaN;continue}
+          nd[i]=10*Math.log10(Math.max(1e-4,v/255*0.3));valid++}
+      }else{
+        const A=gs[0].data.data,B=gs[1].data.data;
+        for(let i=0;i<N;i++){const al=A[i*4+3],a=A[i*4],b=B[i*4];
+          if(al<200||a+b<8){nd[i]=NaN;continue}
+          nd[i]=(b-a)/(b+a);valid++}
+      }
       if(valid<N*0.7){fail++;continue}
       sc.push({date:pick[k].date,nd});
     }catch(e){fail++}
   }
+  if(tok!==s2Tok)return;
   if(sc.length<3){txt.textContent='Sahne indirilemedi ('+sc.length+' alındı, '+fail+' başarısız). Planetary Computer döşeme adresi bu bölgede çalışmadı.';return}
-  const N=cw*cw,mk=()=>{const k=document.createElement('canvas');k.width=cw;k.height=cw;return k};
+  const mk=()=>{const k=document.createElement('canvas');k.width=cw;k.height=cw;return k};
   const cap=(k,t)=>{const dv=document.createElement('div');const q=document.createElement('div');q.className='sc';q.textContent=t;dv.appendChild(k);dv.appendChild(q);grid.appendChild(dv)};
-  const ramp=v=>{ // -0.1 … 0.8: kahverengi → sarı → yeşil
-    const t=Math.max(0,Math.min(1,(v+0.1)/0.9));
+  const ramp=v=>{
+    const t=Math.max(0,Math.min(1,(v-CFG.lo)/(CFG.hi-CFG.lo)));
+    if(isS1){const g=Math.round(255*t);return [g,g,g]}
     return t<.4?[150+80*t/.4,110+90*t/.4,60]:[230-190*(t-.4)/.6,200-20*(t-.4)/.6,60-10*(t-.4)/.6]};
   const show=Math.min(8,sc.length),shw=[];
   for(let q=0;q<show;q++)shw.push(sc[Math.floor(q*(sc.length-1)/Math.max(1,show-1))]);
@@ -4257,7 +4309,6 @@ async function runS2(){
     for(let i=0;i<N;i++){const v=s0.nd[i];const col=isNaN(v)?[40,40,40]:ramp(v);im.data[i*4]=col[0];im.data[i*4+1]=col[1];im.data[i*4+2]=col[2];im.data[i*4+3]=255}
     x.putImageData(im,0,0);cap(k,s0.date);
   });
-  // kalıcı anomali: her sahnede çevresinden ne kadar farklı, sahneler üzerinden ortalama
   const bb=(src,r)=>{const W=cw+1,I=new Float64Array(W*W),Cn=new Float64Array(W*W),o=new Float32Array(N);
     for(let y=0;y<cw;y++){let rs=0,rc=0;for(let x=0;x<cw;x++){const v=src[y*cw+x];if(!isNaN(v)){rs+=v;rc++}I[(y+1)*W+x+1]=I[y*W+x+1]+rs;Cn[(y+1)*W+x+1]=Cn[y*W+x+1]+rc}}
     for(let y=0;y<cw;y++)for(let x=0;x<cw;x++){const xa=Math.max(0,x-r),xb=Math.min(cw,x+r+1),ya=Math.max(0,y-r),yb=Math.min(cw,y+r+1);
@@ -4265,26 +4316,29 @@ async function runS2(){
     return o};
   const acc=new Float32Array(N),cnt=new Float32Array(N);
   for(const s0 of sc){const b=bb(s0.nd,10);for(let i=0;i<N;i++){const v=s0.nd[i]-b[i];if(!isNaN(v)){acc[i]+=v;cnt[i]++}}}
-  const k=mk(),x=k.getContext('2d'),im=x.createImageData(cw,cw);let hi=0,lo=0;
-  const mean=new Float32Array(N);
+  let mean=new Float32Array(N);
   for(let i=0;i<N;i++)mean[i]=cnt[i]>=sc.length*0.6?acc[i]/cnt[i]:0;
+  if(isS1)mean=bb(mean,1);   // radar benek gürültüsünü azalt
+  const k=mk(),x=k.getContext('2d'),im=x.createImageData(cw,cw);
   const mpp=mppAt(c.lat,z);
   const capEl=document.createElement('div');capEl.className='sc';
   const dv=document.createElement('div');dv.appendChild(k);dv.appendChild(capEl);grid.appendChild(dv);
-  let nHi=0,nLo=0;
+  let nHi=0,nLo=0;const th=CFG.thr,gain=isS1?60:600;
   for(let i=0;i<N;i++){
     const m=mean[i];let R=70,G=70,B=70;
-    if(m>0.05){R=60;G=200;B=140;nHi++}else if(m<-0.05){R=255;G=70;B=70;nLo++}else{const q=Math.round(90+m*600);R=G=B=q}
+    if(m>th){R=60;G=200;B=140;nHi++}else if(m<-th){R=255;G=70;B=70;nLo++}else{const q=Math.max(0,Math.min(255,Math.round(90+m*gain)));R=G=B=q}
     im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255;
   }
   x.putImageData(im,0,0);
   x.strokeStyle='#fff';x.lineWidth=2;x.beginPath();x.arc(cw/2,cw/2,14,0,6.283);x.stroke();
-  capEl.textContent='Kalıcı fark: kırmızı = hep düşük, yeşil = hep yüksek';
-  txt.textContent=sc.length+' yaz sahnesi · '+sc[0].date+' … '+sc[sc.length-1].date+' · pencere '+Math.round(cw*mpp)+' m'+(fail?' · '+fail+' sahne alınamadı':'')+
-    '\nÇevresinden hep düşük: %'+(100*nLo/N).toFixed(1)+' · hep yüksek: %'+(100*nHi/N).toFixed(1)+'\nDaire noktanın yeridir. Evler ve bahçeler de kırmızı-yeşil leke verir; açık tarlaya bak.';
+  capEl.textContent='Kalıcı fark ('+CFG.name+'): kırmızı = hep düşük, yeşil = hep yüksek';
+  const hint=isS1?'Radar: ıslak toprak parlak, kuru ve düz yüzey koyu. Eğim ve pürüz de etkiler.':idx==='ndmi'?'NDMI: düşük = kuru toprak/bitki, yüksek = nemli. Gömülü taş yapı üstünde kuruma görülebilir.':idx==='ndre'?'NDRE: bitki stresine erken duyarlı. Duvar üstünde bitki zayıf kalabilir.':'Evler ve bahçeler de kırmızı-yeşil leke verir; açık tarlaya bak.';
+  txt.textContent=sc.length+' sahne · '+sc[0].date+' … '+sc[sc.length-1].date+' · pencere '+Math.round(cw*mpp)+' m'+orbNote+(fail?' · '+fail+' sahne alınamadı':'')+
+    '\nÇevresinden hep düşük: %'+(100*nLo/N).toFixed(1)+' · hep yüksek: %'+(100*nHi/N).toFixed(1)+'\nDaire noktanın yeridir. '+hint;
 }
 $('s2Close').onclick=()=>{$('s2Box').hidden=true};
-$('bS2').onclick=()=>runS2().catch(e=>{$('s2Txt').textContent='Sentinel-2 hatası: '+e.message});
+$('bS2').onclick=()=>runS2().catch(e=>{$('s2Txt').textContent='Seri hatası: '+e.message});
+$('s2Run').onclick=$('s2Idx').onchange=()=>runS2().catch(e=>{$('s2Txt').textContent='Seri hatası: '+e.message});
 
 /* ---------- Kendi fotoğrafını analiz et ---------- */
 let ph=null;

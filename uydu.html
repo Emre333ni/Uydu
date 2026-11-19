@@ -417,7 +417,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 <div class="tmRow"><button id="tmPrev">‹</button><button id="tmPlay">❚❚</button><button id="tmNext">›</button><input id="tmSl" type="range" min="0" max="0" value="0"></div>
 <div class="tmRow"><select id="tmFlt" style="flex:1"><option value="">Normal</option><option value="sharp">Keskinleştir</option><option value="local">Yerel kontrast</option><option value="veg">Bitki (VARI)</option></select><select id="tmSp" style="flex:1"><option value="1500">Yavaş</option><option value="900" selected>Orta</option><option value="450">Hızlı</option></select></div>
 <p id="tmScore" style="white-space:pre-line;font-weight:600"></p>
-<div class="btns"><button id="tmPers">Kalıcı iz haritası</button><button id="tmSnow">Kar erime izi</button><button id="tmShow" hidden>Haritada göster</button></div><canvas id="tmPersCv" width="448" height="448" hidden></canvas><p id="tmPersTxt" style="white-space:pre-line"></p>
+<div class="btns"><button id="tmPers">Kalıcı iz haritası</button><button id="tmSnow">Kar erime izi</button><button id="tmShow" hidden>Haritada göster</button></div><label style="display:block;margin:6px 0"><input type="checkbox" id="tmMask" checked> Evleri ve yolları gizle (OSM)</label><div class="btns" style="display:none"></div><canvas id="tmPersCv" width="448" height="448" hidden></canvas><p id="tmPersTxt" style="white-space:pre-line"></p>
 <p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir. Resme dokunursan o noktanın kaç karede hep aynı leke olduğunu söylerim.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
 <div id="s2Box" hidden><div><h3>Uydu serisi (Sentinel)</h3><select id="s2Idx" style="width:100%;margin-bottom:6px"><option value="ndvi">Bitki canlılığı (NDVI)</option><option value="ndmi">Nem (NDMI)</option><option value="ndre">Bitki stresi (kırmızı kenar, NDRE)</option><option value="s1">Radar nem/pürüz (Sentinel-1)</option></select><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Piksel 10 m (radarda ~10 m, gürültülü). Kırmızı = çevresinden hep düşük, yeşil = hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez. Tünel/oda doğrudan görünmez; yalnız üstündeki nem ve bitki farkı.</p><div class="btns"><button id="s2Run">Çalıştır</button><button id="s2Close">Kapat</button></div></div></div>
 <div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
@@ -4099,7 +4099,7 @@ async function runTime(){
     if(ok.filter(Boolean).length>=Math.min(5,Math.ceil(sample.length/3))){if(zz!==z){z=zz;zNote=' (z'+zz+', daha yükseği yok)'}break}
   }
   pc=map.project(c,z);const x0=Math.round(pc.x-cw/2),y0=Math.round(pc.y-cw/2);
-  st.mpp=mppAt(c.lat,z);st.c=c;
+  st.mpp=mppAt(c.lat,z);st.c=c;st.z=z;st.x0=x0;st.y0=y0;
   const sig=id=>{const d=id.data,o=[];for(let i=0;i<d.length;i+=4*997)o.push(d[i]+d[i+1]+d[i+2]);return o};
   let prevSig=null;
   const lumOf=f=>{if(f.lum)return f.lum;const d=f.img.data,o=new Float32Array(cw*cw);for(let i=0;i<cw*cw;i++)o[i]=0.3*d[i*4]+0.59*d[i*4+1]+0.11*d[i*4+2];return f.lum=o};
@@ -4186,7 +4186,7 @@ function boxF(src,w,r){const W=w+1,I=new Float64Array(W*W),o=new Float32Array(w*
     o[y*w+x]=(I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa])/((xb-xa)*(yb-ya))}
   return o}
 const persLayer=L.layerGroup().addTo(map);
-function runPersist(snowMode){
+async function runPersist(snowMode){
   const st=tmState,out=$('tmPersTxt'),cv=$('tmPersCv');
   if(!st||st.frames.length<4){out.textContent='Önce kareler yüklensin (en az 4).';return}
   const cw=448,N=cw*cw,fr=[];let snow=0;
@@ -4203,9 +4203,24 @@ function runPersist(snowMode){
     for(let i=0;i<N;i++){const zz=dv[i]/sg;sum[i]+=zz;if(zz>=1.5)pos[i]++;else if(zz<=-1.5)neg[i]++}
   }
   const n=fr.length,need=Math.ceil(n*(snowMode?0.67:0.75)),ctx=cv.getContext('2d'),im=ctx.createImageData(cw,cw);
+  let mk=null,maskNote='';
+  if($('tmMask').checked&&st.z!=null){
+    out.textContent='Ev ve yol verisi alınıyor…';
+    const nw=map.unproject([st.x0,st.y0],st.z),se=map.unproject([st.x0+cw,st.y0+cw],st.z);
+    const osm=await fetchOSM({s:se.lat,w:nw.lng,n:nw.lat,e:se.lng});
+    if(osm.error)maskNote='\nEv ve yol verisi alınamadı ('+osm.error+'), gizleme yapılmadı.';
+    else{
+      const bm=buildMask(osm,st.z,st.x0,st.y0,cw,cw,st.mpp||1).mask,f=new Float32Array(N);
+      for(let i=0;i<N;i++)f[i]=bm[i];
+      const bl=boxF(f,cw,4);mk=new Uint8Array(N);let nb=0;
+      for(let i=0;i<N;i++)if(bl[i]>0.02){mk[i]=1;nb++}
+      maskNote='\nOSM: '+osm.ways.length+' hat gizlendi (%'+(100*nb/N).toFixed(0)+' alan). OSM\'de eksik ev varsa onlar yine çıkar.';
+    }
+  }
   const q=new Uint8Array(N);let nq=0;
   for(let i=0;i<N;i++){
     const g=Math.round(base[i]*0.6);let R=g,G=g,B=g;const m=sum[i]/n;
+    if(mk&&mk[i]){R=g*0.5;G=g*0.5;B=g*0.7;im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255;continue}
     if(neg[i]>=need&&m<-2){R=255;G=60;B=60;q[i]=1;nq++}
     else if(!snowMode&&pos[i]>=need&&m>2){R=60;G=220;B=255;q[i]=2;nq++}
     im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255}
@@ -4229,11 +4244,11 @@ function runPersist(snowMode){
   $('tmShow').hidden=!peaks.length;
   out.textContent=(snowMode?n+' karlı kare ('+snow+' karsız atıldı)':n+' karsız kare'+(snow?' ('+snow+' karlı kare atıldı)':''))+' · '+(100*nq/N).toFixed(1)+'% piksel kalıcı\n'+(snowMode?'Karın içinde hep aynı yerde açılan koyu leke (erime ya da çıplak toprak). Sıcak hava çıkan boşluk, kuyu ya da bacanın üstü erir. Çatı, yol, kaya ve ağaç da koyu çıkar; evlerin dışında, tek başına yuvarlak olanlara bak. Sarı daireler:':'Kırmızı = hep çevresinden koyu, mavi = hep açık. Sarı daireler en güçlü kümeler:')+'\n'+
     (peaks.length?peaks.map((p,k)=>{const dx=(p.x-cw/2)*mpp,dy=(p.y-cw/2)*mpp;return (k+1)+') '+(st.c.lat-dy/110540).toFixed(5)+', '+(st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180))).toFixed(5)+' · '+(p.k===1?'koyu':'açık')+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m'}).join('\n'):'Güçlü kalıcı küme yok.')+
-    '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.';
+    '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.'+maskNote;
 }
 $('tmShow').onclick=()=>{const b=[];persLayer.eachLayer(m=>b.push(m.getLatLng()));if(!b.length)return;tmStop();$('tmBox').hidden=true;map.fitBounds(L.latLngBounds(b),{padding:[50,50],maxZoom:19});setMsg('Sarı numaralar kalıcı iz adayları. Dokununca koordinat çıkar.')};
-$('tmSnow').onclick=()=>{try{runPersist(true)}catch(e){$('tmPersTxt').textContent='Kar izi hatası: '+e.message}};
-$('tmPers').onclick=()=>{try{runPersist(false)}catch(e){$('tmPersTxt').textContent='Kalıcı iz hatası: '+e.message}};
+$('tmSnow').onclick=()=>runPersist(true).catch(e=>{$('tmPersTxt').textContent='Kar izi hatası: '+e.message});
+$('tmPers').onclick=()=>runPersist(false).catch(e=>{$('tmPersTxt').textContent='Kalıcı iz hatası: '+e.message});
 $('tmFlt').onchange=()=>{if(tmState&&tmState.draw)tmState.draw()};
 $('tmClose').onclick=()=>{tmStop();tmState=null;$('tmBox').hidden=true};
 $('bTime').onclick=()=>runTime().catch(e=>{$('tmTxt').textContent='Zaman atlaması başarısız: '+e.message});

@@ -4225,8 +4225,16 @@ async function runPersist(snowMode){
     else if(!snowMode&&pos[i]>=need&&m>2){R=60;G=220;B=255;q[i]=2;nq++}
     im.data[i*4]=R;im.data[i*4+1]=G;im.data[i*4+2]=B;im.data[i*4+3]=255}
   ctx.putImageData(im,0,0);
+  // OSM'de ev yoksa: yoğun leke bölgesini (köy içi) dışarıda bırak, tek başına kalanları öne çıkar
+  let dense=null,denseNote='';
+  if(!mk||maskNote.indexOf('%0 alan')>=0||maskNote.indexOf('alınamadı')>=0){
+    const qf=new Float32Array(N);for(let i=0;i<N;i++)qf[i]=q[i]?1:0;
+    const dn=boxF(qf,cw,22);dense=new Uint8Array(N);let nd=0;
+    for(let i=0;i<N;i++)if(dn[i]>0.10){dense[i]=1;nd++}
+    denseNote='\nHarita verisinde ev yok. Lekelerin yoğun olduğu yerler (köy içi, %'+(100*nd/N).toFixed(0)+' alan) listeden çıkarıldı; tek başına kalanlar numaralandı.';
+  }
   // en güçlü kümeler
-  const cand=[];for(let i=0;i<N;i++)if(q[i])cand.push(i);
+  const cand=[];for(let i=0;i<N;i++)if(q[i]&&!(dense&&dense[i]))cand.push(i);
   cand.sort((a,b)=>Math.abs(sum[b])-Math.abs(sum[a]));
   const peaks=[];
   for(const i of cand){
@@ -4244,7 +4252,7 @@ async function runPersist(snowMode){
   $('tmShow').hidden=!peaks.length;
   out.textContent=(snowMode?n+' karlı kare ('+snow+' karsız atıldı)':n+' karsız kare'+(snow?' ('+snow+' karlı kare atıldı)':''))+' · '+(100*nq/N).toFixed(1)+'% piksel kalıcı\n'+(snowMode?'Karın içinde hep aynı yerde açılan koyu leke (erime ya da çıplak toprak). Sıcak hava çıkan boşluk, kuyu ya da bacanın üstü erir. Çatı, yol, kaya ve ağaç da koyu çıkar; evlerin dışında, tek başına yuvarlak olanlara bak. Sarı daireler:':'Kırmızı = hep çevresinden koyu, mavi = hep açık. Sarı daireler en güçlü kümeler:')+'\n'+
     (peaks.length?peaks.map((p,k)=>{const dx=(p.x-cw/2)*mpp,dy=(p.y-cw/2)*mpp;return (k+1)+') '+(st.c.lat-dy/110540).toFixed(5)+', '+(st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180))).toFixed(5)+' · '+(p.k===1?'koyu':'açık')+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m'}).join('\n'):'Güçlü kalıcı küme yok.')+
-    '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.'+maskNote;
+    '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.'+maskNote+denseNote;
 }
 $('tmShow').onclick=()=>{const b=[];persLayer.eachLayer(m=>b.push(m.getLatLng()));if(!b.length)return;tmStop();$('tmBox').hidden=true;map.fitBounds(L.latLngBounds(b),{padding:[50,50],maxZoom:19});setMsg('Sarı numaralar kalıcı iz adayları. Dokununca koordinat çıkar.')};
 $('tmSnow').onclick=()=>runPersist(true).catch(e=>{$('tmPersTxt').textContent='Kar izi hatası: '+e.message});

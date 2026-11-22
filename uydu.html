@@ -265,8 +265,11 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div class="btns"><button id="bOff">Bu bölgeyi çevrimdışı kaydet</button><button id="bOffClr">Kayıtlıyı sil</button></div>
       <div class="hint" id="offInfo" style="margin-top:0"></div>
       <button id="bBest" style="width:100%;margin:8px 0">Bu konumda en net görüntüyü bul</button>
-      <div class="btns"><button id="bTime">▶ Zaman atlaması</button><button id="bS2">Uydu serisi (bitki, nem, radar)</button></div>
-      <div class="btns"><button id="bAuto">Otomatik fark (aynı mevsim)</button></div>
+      <div class="btns"><button id="bTime">▶ Zaman atlaması</button><button id="bAuto">Otomatik fark (aynı mevsim)</button></div>
+      <div class="btns"><button id="bGeo">Jeoloji (bu nokta)</button><button id="bGeoMap">Jeoloji katmanı</button></div>
+      <p id="geoTxt" class="hint" style="white-space:pre-line;margin:4px 0"></p>
+      <div class="btns"><button id="bMta">MTA jeoloji haritasını aç</button></div>
+      <details style="margin:6px 0"><summary class="hint">Az işe yarayan araçlar</summary><div class="btns"><button id="bS2">Uydu serisi (bitki, nem, radar)</button></div></details>
       <label>Yakınlaşınca görüntü boşalıyor ya da bulanıksa: en yüksek detay seviyesi
         <select id="selDetail">
           <option value="auto" selected>Otomatik</option>
@@ -4583,6 +4586,32 @@ function stopWalk(){
   if(meMk){map.removeLayer(meMk);meMk=null}
   walk=null;heading=null;arrived=-1;navTgt=null;goUpdate();$('bWalk').classList.remove('on');$('ccNav').hidden=true;
 }
+let geoLayer=null;
+$('bMta').onclick=()=>window.open('https://yerbilimleri.mta.gov.tr/','_blank','noopener');
+$('bGeoMap').onclick=()=>{
+  if(geoLayer){map.removeLayer(geoLayer);geoLayer=null;$('bGeoMap').classList.remove('on');return}
+  geoLayer=L.tileLayer('https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png',{opacity:.6,maxNativeZoom:12,maxZoom:22,attribution:'Macrostrat'}).addTo(map);
+  let errs=0;geoLayer.on('tileerror',()=>{if(++errs===3)setMsg('Jeoloji katmanı yüklenemedi (sunucu yanıt vermiyor).')});
+  $('bGeoMap').classList.add('on');
+  setMsg('Kaba jeoloji katmanı (köy ölçeğinde ayrıntı yok). Kapatmak için aynı düğmeye bas.');
+};
+$('bGeo').onclick=async()=>{
+  const c=map.getCenter(),el=$('geoTxt');el.textContent='Jeoloji sorgulanıyor…';
+  try{
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),15000);
+    const r=await fetch('https://macrostrat.org/api/v2/geologic_units/map?lat='+c.lat.toFixed(5)+'&lng='+c.lng.toFixed(5)+'&response=long&format=json',{signal:ctl.signal});
+    clearTimeout(to);
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json(),rows=(j.success&&j.success.data)||[];
+    if(!rows.length){el.textContent='Bu noktada jeoloji kaydı yok. MTA haritasına bak.';return}
+    const u=rows[0],txt=[u.name,u.strat_name,u.lith,u.descrip,u.comments].filter(Boolean).join(' · ');
+    const soft=/gypsum|evaporit|anhydrit|limestone|carbonate|dolomit|tuff|ignimbrit|marl|chalk|travertin|sandstone|conglomerat/i.test(txt);
+    const hard=/granit|basalt|andesit|gabbro|ophiolit|serpentin|schist|gneiss|quartzit/i.test(txt);
+    el.textContent=(u.name||u.strat_name||'Birim')+(u.lith?'\nKaya: '+u.lith:'')+(u.b_age||u.age?'\nYaş: '+(u.age||u.t_age+'–'+u.b_age):'')+
+      '\nOyulabilir mi: '+(soft?'EVET (yumuşak kaya: jips, kireçtaşı, tüf, marn, kumtaşı olabilir)':hard?'ZOR (sert kaya)':'belirsiz')+
+      '\nKaba harita (1:1 milyon düzeyi); köy içinde yerel kaya değişebilir.';
+  }catch(e){el.textContent='Jeoloji alınamadı ('+(e.name==='AbortError'?'zaman aşımı':e.message)+'). MTA haritasını aç düğmesini kullan.'}
+};
 $('bGoC').onclick=()=>{const c=map.getCenter();goTo(c.lat,c.lng,'Harita ortası '+c.lat.toFixed(5)+', '+c.lng.toFixed(5))};
 $('bWalk').onclick=()=>{walk?stopWalk():startWalk()};
 

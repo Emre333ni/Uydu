@@ -269,6 +269,9 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div class="btns"><button id="bGeo">Jeoloji (bu nokta)</button><button id="bGeoMap">Jeoloji katmanı</button></div>
       <p id="geoTxt" class="hint" style="white-space:pre-line;margin:4px 0"></p>
       <div class="btns"><button id="bMta">MTA jeoloji haritasını aç</button></div>
+      <div class="hint" style="margin:6px 0 2px">Bu noktayı başka haritada aç</div>
+      <div class="btns"><button data-ext="ge">Google Earth (eski görüntüler)</button><button data-ext="gm">Google Haritalar uydu</button></div>
+      <div class="btns"><button data-ext="yx">Yandex uydu</button><button data-ext="bing">Bing uydu</button><button data-ext="eo">Sentinel Hub</button></div>
       <details style="margin:6px 0"><summary class="hint">Az işe yarayan araçlar</summary><div class="btns"><button id="bS2">Uydu serisi (bitki, nem, radar)</button></div></details>
       <label>Yakınlaşınca görüntü boşalıyor ya da bulanıksa: en yüksek detay seviyesi
         <select id="selDetail">
@@ -4587,6 +4590,16 @@ function stopWalk(){
   walk=null;heading=null;arrived=-1;navTgt=null;goUpdate();$('bWalk').classList.remove('on');$('ccNav').hidden=true;
 }
 let geoLayer=null;
+function extUrl(k,lat,lng,z){
+  const a=lat.toFixed(6),o=lng.toFixed(6);
+  if(k==='ge')return 'https://earth.google.com/web/@'+a+','+o+',1200a,250d,35y,0h,0t,0r';
+  if(k==='gm')return 'https://www.google.com/maps/@'+a+','+o+','+Math.min(20,z)+'z/data=!3m1!1e3';
+  if(k==='yx')return 'https://yandex.com/maps/?ll='+o+'%2C'+a+'&z='+Math.min(19,z)+'&l=sat';
+  if(k==='bing')return 'https://www.bing.com/maps?cp='+a+'~'+o+'&lvl='+Math.min(20,z)+'&style=h';
+  if(k==='eo')return 'https://apps.sentinel-hub.com/eo-browser/?zoom='+Math.min(16,z)+'&lat='+a+'&lng='+o;
+  return '';
+}
+document.querySelectorAll('[data-ext]').forEach(b=>b.onclick=()=>{const c=map.getCenter();window.open(extUrl(b.dataset.ext,c.lat,c.lng,Math.round(map.getZoom())),'_blank','noopener')});
 $('bMta').onclick=()=>window.open('https://yerbilimleri.mta.gov.tr/','_blank','noopener');
 $('bGeoMap').onclick=()=>{
   if(geoLayer){map.removeLayer(geoLayer);geoLayer=null;$('bGeoMap').classList.remove('on');return}

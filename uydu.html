@@ -424,7 +424,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
 <div class="tmRow"><button id="tmPrev">‹</button><button id="tmPlay">❚❚</button><button id="tmNext">›</button><input id="tmSl" type="range" min="0" max="0" value="0"></div>
 <div class="tmRow"><select id="tmFlt" style="flex:1"><option value="">Normal</option><option value="sharp">Keskinleştir</option><option value="local">Yerel kontrast</option><option value="veg">Bitki (VARI)</option></select><select id="tmSp" style="flex:1"><option value="1500">Yavaş</option><option value="900" selected>Orta</option><option value="450">Hızlı</option></select></div>
 <p id="tmScore" style="white-space:pre-line;font-weight:600"></p>
-<div class="btns"><button id="tmPers">Kalıcı iz haritası</button><button id="tmSnow">Kar erime izi</button><button id="tmShow" hidden>Haritada göster</button></div><label style="display:block;margin:6px 0"><input type="checkbox" id="tmMask" checked> Evleri ve yolları gizle (OSM)</label><div class="btns" style="display:none"></div><canvas id="tmPersCv" width="448" height="448" hidden></canvas><p id="tmPersTxt" style="white-space:pre-line"></p>
+<div class="btns"><button id="tmPers">Kalıcı iz haritası</button><button id="tmSnow">Kar erime izi</button><button id="tmShow" hidden>Haritada göster</button><button id="tmSave" hidden>Notlara kaydet</button></div><label style="display:block;margin:6px 0"><input type="checkbox" id="tmMask" checked> Evleri ve yolları gizle (OSM)</label><div class="btns" style="display:none"></div><canvas id="tmPersCv" width="448" height="448" hidden></canvas><p id="tmPersTxt" style="white-space:pre-line"></p>
 <p id="tmTxt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Tarihler yayın tarihidir, çekim tarihi değil. Artı işareti harita merkezidir. Resme dokunursan o noktanın kaç karede hep aynı leke olduğunu söylerim.</p><div class="btns"><button id="tmClose">Kapat</button></div></div></div>
 <div id="s2Box" hidden><div><h3>Uydu serisi (Sentinel)</h3><select id="s2Idx" style="width:100%;margin-bottom:6px"><option value="ndvi">Bitki canlılığı (NDVI)</option><option value="ndmi">Nem (NDMI)</option><option value="ndre">Bitki stresi (kırmızı kenar, NDRE)</option><option value="s1">Radar nem/pürüz (Sentinel-1)</option></select><div id="s2Grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="s2Txt" style="white-space:pre-line"></p><p class="hint" style="margin:0">Piksel 10 m (radarda ~10 m, gürültülü). Kırmızı = çevresinden hep düşük, yeşil = hep yüksek. 30 m'den küçük izler bu çözünürlükte görünmez. Tünel/oda doğrudan görünmez; yalnız üstündeki nem ve bitki farkı.</p><div class="btns"><button id="s2Run">Çalıştır</button><button id="s2Close">Kapat</button></div></div></div>
 <div id="snBox" hidden><div><h3 id="snTitle"></h3><div id="snGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div><p id="snText" style="white-space:pre-line"></p><p class="hint" style="margin:0">Kar maskesi renkten hesaplanır (beyaz, düşük doygunluk). Wayback tarihi yayın tarihidir. Eğim, gölge ve tarla sınırı da aynı izi verir; en az 3 tutarlı kısmi karlı görüntü gerekir.</p><div class="btns"><button id="snClose">Kapat</button></div></div></div>
@@ -1297,10 +1297,15 @@ setLayer('A');
 
 /* ---------- Konum / arama / HUD ---------- */
 let me=null,meAcc=null;
+let followMe=false;
 $('bLoc').onclick=()=>{
   setMsg('');
-  map.locate({setView:true,maxZoom:18,enableHighAccuracy:true,timeout:15000});
+  followMe=true;$('bLoc').classList.add('on');
+  if(!walk)startWalk();
+  if(walk&&walk.pos)map.setView(walk.pos,Math.max(map.getZoom(),18));
+  else setMsg('Konum aranıyor… (Safari konum iznine izin ver)');
 };
+map.on('dragstart',()=>{if(followMe){followMe=false;$('bLoc').classList.remove('on')}});
 map.on('locationfound',e=>{
   if(!me){
     meAcc=L.circle(e.latlng,{radius:e.accuracy,color:'#6cc3ea',weight:1,fillOpacity:0.1,interactive:false}).addTo(map);
@@ -4088,7 +4093,7 @@ async function runTime(){
   if(tmState)tmStop();
   const cv=$('tmCv'),ctx=cv.getContext('2d'),lab=$('tmLab'),sl=$('tmSl'),txt=$('tmTxt'),c=map.getCenter();
   const st=tmState={frames:[],i:0,playing:true,timer:null,dead:false};
-  $('tmBox').hidden=false;txt.textContent='Farklı görüntüler ayıklanıyor…';lab.textContent='';$('tmPersCv').hidden=true;$('tmPersTxt').textContent='';$('tmShow').hidden=true;
+  $('tmBox').hidden=false;txt.textContent='Farklı görüntüler ayıklanıyor…';lab.textContent='';$('tmPersCv').hidden=true;$('tmPersTxt').textContent='';$('tmShow').hidden=true;$('tmSave').hidden=true;
   const cw=448;cv.width=cw;cv.height=cw;ctx.fillStyle='#000';ctx.fillRect(0,0,cw,cw);
   let z=Math.max(15,Math.min(19,Math.round(map.getZoom())));
   let pc=map.project(c,z),tx=Math.floor(pc.x/256),ty=Math.floor(pc.y/256);
@@ -4194,7 +4199,7 @@ function boxF(src,w,r){const W=w+1,I=new Float64Array(W*W),o=new Float32Array(w*
   for(let y=0;y<w;y++)for(let x=0;x<w;x++){const xa=Math.max(0,x-r),xb=Math.min(w,x+r+1),ya=Math.max(0,y-r),yb=Math.min(w,y+r+1);
     o[y*w+x]=(I[yb*W+xb]-I[ya*W+xb]-I[yb*W+xa]+I[ya*W+xa])/((xb-xa)*(yb-ya))}
   return o}
-const persLayer=L.layerGroup().addTo(map);
+const persLayer=L.layerGroup().addTo(map);let persSaved=[];
 async function runPersist(snowMode){
   const st=tmState,out=$('tmPersTxt'),cv=$('tmPersCv');
   if(!st||st.frames.length<4){out.textContent='Önce kareler yüklensin (en az 4).';return}
@@ -4258,12 +4263,14 @@ async function runPersist(snowMode){
   persLayer.clearLayers();
   const llOf=p=>{const dx=(p.x-cw/2)*mpp,dy=(p.y-cw/2)*mpp;return L.latLng(st.c.lat-dy/110540,st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180)))};
   peaks.forEach((p,k)=>{const ll=llOf(p);L.marker(ll,{icon:L.divIcon({className:'',html:'<div style="width:26px;height:26px;border-radius:50%;background:#ffcf6b;color:#111;border:2px solid #fff;font:700 14px sans-serif;display:flex;align-items:center;justify-content:center">'+(k+1)+'</div>',iconSize:[26,26],iconAnchor:[13,13]})}).bindPopup(()=>{const bx=document.createElement('div');bx.innerHTML='<b>Kalıcı iz #'+(k+1)+'</b><br>'+(snowMode?'karda koyu leke':(p.k===1?'hep koyu':'hep açık'))+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m<br>'+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+'<br>';const gb=document.createElement('button');gb.textContent='🧭 Buraya git';gb.onclick=()=>goTo(ll.lat,ll.lng,'Kalıcı iz #'+(k+1));bx.appendChild(gb);return bx}).addTo(persLayer)});
-  $('tmShow').hidden=!peaks.length;
+  $('tmShow').hidden=!peaks.length;$('tmSave').hidden=!peaks.length;
+  persSaved=peaks.map((p,k)=>{const ll=llOf(p);return {lat:ll.lat,lon:ll.lng,text:'Kalıcı iz #'+(k+1)+' · '+(snowMode?'karda koyu leke':(p.k===1?'koyu':'açık'))+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m'}});
   out.textContent=(snowMode?n+' karlı kare ('+snow+' karsız atıldı)':n+' karsız kare'+(snow?' ('+snow+' karlı kare atıldı)':''))+' · '+(100*nq/N).toFixed(1)+'% piksel kalıcı\n'+(snowMode?'Karın içinde hep aynı yerde açılan koyu leke (erime ya da çıplak toprak). Sıcak hava çıkan boşluk, kuyu ya da bacanın üstü erir. Çatı, yol, kaya ve ağaç da koyu çıkar; evlerin dışında, tek başına yuvarlak olanlara bak. Sarı daireler:':'Kırmızı = hep çevresinden koyu, mavi = hep açık. Sarı daireler en güçlü kümeler:')+'\n'+
     (peaks.length?peaks.map((p,k)=>{const dx=(p.x-cw/2)*mpp,dy=(p.y-cw/2)*mpp;return (k+1)+') '+(st.c.lat-dy/110540).toFixed(5)+', '+(st.c.lng+dx/(111320*Math.cos(st.c.lat*Math.PI/180))).toFixed(5)+' · '+(p.k===1?'koyu':'açık')+' · ~'+Math.round(Math.sqrt(p.cn)*mpp*2)+' m'}).join('\n'):'Güçlü kalıcı küme yok.')+
     '\nBu yalnız yüzeydeki kalıcı lekedir: bina, yol, kaya, taş yığını da çıkar. Neyin altı olduğunu söylemez.'+maskNote+denseNote;
 }
 $('tmShow').onclick=()=>{const b=[];persLayer.eachLayer(m=>b.push(m.getLatLng()));if(!b.length)return;tmStop();$('tmBox').hidden=true;map.fitBounds(L.latLngBounds(b),{padding:[50,50],maxZoom:19});setMsg('Sarı numaralar kalıcı iz adayları. Dokununca koordinat çıkar.')};
+$('tmSave').onclick=()=>{let nn=0;for(const p of persSaved){if(notes.some(n=>Math.abs(n.lat-p.lat)<1e-6&&Math.abs(n.lon-p.lon)<1e-6))continue;notes.push({id:Date.now()+''+Math.floor(Math.random()*100000),lat:p.lat,lon:p.lon,text:p.text,photo:null,t:Date.now()});nn++}saveNotes();renderNotes();$('tmPersTxt').textContent=nn+' nokta Notlar sekmesine kaydedildi. Sayfa kapansa da kalır.'};
 $('tmSnow').onclick=()=>runPersist(true).catch(e=>{$('tmPersTxt').textContent='Kar izi hatası: '+e.message});
 $('tmPers').onclick=()=>runPersist(false).catch(e=>{$('tmPersTxt').textContent='Kalıcı iz hatası: '+e.message});
 $('tmFlt').onchange=()=>{if(tmState&&tmState.draw)tmState.draw()};
@@ -4561,6 +4568,7 @@ function onOri(e){
   else return;
   navUpdate();
 }
+let meAccW=null;
 function startWalk(){
   if(walk)return;
   if(!navigator.geolocation){setMsg('Bu tarayıcı konum vermiyor.');return}
@@ -4575,11 +4583,13 @@ function startWalk(){
   }catch(e){}
   walk.id=navigator.geolocation.watchPosition(pp=>{
     walk.pos=L.latLng(pp.coords.latitude,pp.coords.longitude);walk.acc=pp.coords.accuracy;
-    if(!meMk)meMk=L.circleMarker(walk.pos,{radius:8,color:'#fff',weight:3,fillColor:'#2f8cff',fillOpacity:1}).addTo(map);
-    else meMk.setLatLng(walk.pos);
+    const first=!meMk;
+    if(first){meMk=L.circleMarker(walk.pos,{radius:8,color:'#fff',weight:3,fillColor:'#2f8cff',fillOpacity:1,interactive:false}).addTo(map);meAccW=L.circle(walk.pos,{radius:pp.coords.accuracy,color:'#6cc3ea',weight:1,fillOpacity:.12,interactive:false}).addTo(map)}
+    else{meMk.setLatLng(walk.pos);meAccW.setLatLng(walk.pos);meAccW.setRadius(pp.coords.accuracy)}
+    if(followMe){if(first){setMsg('');map.setView(walk.pos,Math.max(map.getZoom(),18))}else map.panTo(walk.pos,{animate:true,duration:.5})}
     navUpdate();
   },err=>{if(err.code===1){setMsg('Konum izni verilmedi. Safari ayarlarından konuma izin verin.');stopWalk()}else{setMsg('Konum zayıf, bekleniyor…');setTimeout(()=>setMsg(''),4000)}},{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
-  if(!candData.length&&!navTgt)setMsg('Önce bir analiz yapın; sonra aday seçip yürüyün.');
+  if(!candData.length&&!navTgt&&!followMe)setMsg('Önce bir analiz yapın; sonra aday seçip yürüyün.');
   navUpdate();
 }
 function stopWalk(){
@@ -4587,6 +4597,8 @@ function stopWalk(){
   try{navigator.geolocation.clearWatch(walk.id)}catch(e){}
   window.removeEventListener('deviceorientation',onOri);window.removeEventListener('deviceorientationabsolute',onOri);
   if(meMk){map.removeLayer(meMk);meMk=null}
+  if(meAccW){map.removeLayer(meAccW);meAccW=null}
+  followMe=false;$('bLoc').classList.remove('on');
   walk=null;heading=null;arrived=-1;navTgt=null;goUpdate();$('bWalk').classList.remove('on');$('ccNav').hidden=true;
 }
 let geoLayer=null;

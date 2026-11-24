@@ -4281,7 +4281,7 @@ const routeLayer=L.layerGroup().addTo(map);
 function routeTest(){
   routeLayer.clearLayers();
   const out=$('rtRes');
-  const pts=(routePts&&routePts.length>=2)?routePts:(msrPts.length>=2?msrPts:null);
+  const pts=(msrOn&&msrPts.length>=2)?msrPts:((routePts&&routePts.length>=2)?routePts:null);
   if(!pts){out.textContent='Önce ölçü aracıyla hattı çiz (en az 2 nokta).';return}
   if(!lastSMap){out.textContent='Önce Analiz çalıştır. Hat o analizin üstünde sınanır.';return}
   const m=lastSMap,thr=+$('aThr').value;
@@ -4333,7 +4333,7 @@ function routeTest(){
     txt='\nSon parça yönü: '+N8[Math.round(bear/45)%8]+' ('+Math.round(bear)+'°). Sarı kesik çizgi 60 m devamı gösterir.'
   }
   const verdict=pr<0.05?'iz hatla uyuşuyor':pr<0.2?'zayıf uyum':'uyum yok';
-  out.textContent='Hat '+Math.round(lenM)+' m · hattın %'+Math.round(obs*100)+'’i izin 2 m yanında\nRastgele yerleştirince ortalama %'+Math.round(mean*100)+' · rastgele denemelerin %'+Math.round(pr*100)+'’i bundan iyi\nSonuç: '+verdict+txt+'\nYeşil: iz olan kısım. İzler çatı ve gölge de olabilir.';
+  out.textContent='Hat '+pts.length+' nokta, '+Math.round(lenM)+' m · hattın %'+Math.round(obs*100)+'’i izin 2 m yanında\nRastgele yerleştirince ortalama %'+Math.round(mean*100)+' · rastgele denemelerin %'+Math.round(pr*100)+'’i bundan iyi\nSonuç: '+verdict+txt+'\nYeşil: iz olan kısım. İzler çatı ve gölge de olabilir.';
   map.fitBounds(L.latLngBounds(P.map(q=>ll(q[0],q[1]))),{padding:[40,40],maxZoom:20,animate:false});setPanel(false);
 }
 $('bRt').onclick=()=>{try{routeTest()}catch(e){$('rtRes').textContent='Hata: '+e.message}};

@@ -354,6 +354,7 @@ body.full #brand,body.full #top,body.full #panel{display:none}
       <div id="verRes"></div>
       <div id="candList"></div>
       <div class="btns"><button id="bDir">🧭 Olası yönü bul (hepsini birleştir)</button><button id="bDirClr">Sıfırla</button></div>
+      <label style="font-size:13px"><input type="checkbox" id="dirAnc" checked> Sadece ortadaki artıdan (+) geçen şeritler</label>
       <div id="dirRes" style="white-space:pre-line;font-size:12px"></div>
       <div class="btns"><button id="bTap">Dokun-incele: kapalı</button></div>
       <div class="btns"><button id="bScan">Görünen bölgeyi tara (yükselti)</button><button id="bScanStop" style="display:none">Durdur</button></div>
@@ -4284,7 +4285,7 @@ function evAdd(src,lat,lon,w){
   evStore.push({src,lat,lon,w});
   if(evStore.length>600)evStore.shift();
 }
-function dirBest(pts,HW,MINSPAN){
+function dirBest(pts,HW,MINSPAN,anc){
   let bs=0,bb=null;
   for(let a=0;a<180;a+=3){
     const r=a*Math.PI/180,ux=Math.sin(r),uy=Math.cos(r),nx=uy,ny=-ux;
@@ -4294,6 +4295,7 @@ function dirBest(pts,HW,MINSPAN){
       let sum=0,tmin=1e9,tmax=-1e9,k=i;
       for(;k<q.length&&q[k].o-q[i].o<=2*HW;k++){sum+=q[k].p.w;if(q[k].t<tmin)tmin=q[k].t;if(q[k].t>tmax)tmax=q[k].t}
       if(tmax-tmin<MINSPAN||k-i<3)continue;
+      if(anc&&!(q[i].o<=HW&&q[i].o+2*HW>=-HW))continue;
       if(sum>bs){bs=sum;bb={score:sum,a,ux,uy,nx,ny,tmin,tmax,o0:q[i].o,mem:q.slice(i,k).map(m=>m.p)}}
     }
   }
@@ -4305,17 +4307,17 @@ function dirCompute(){
   let P=evStore.map(e=>({x:(e.lon-c.lng)*kx,y:(e.lat-c.lat)*ky,w:e.w,src:e.src})).filter(p=>Math.hypot(p.x,p.y)<700);
   if(P.length<4){out.textContent='Nokta az ('+P.length+'). Önce Analiz, Tara ve Kalıcı iz çalıştır, noktalar burada birikir.';return}
   P.sort((m,n)=>n.w-m.w);P=P.slice(0,150);
-  const HW=20,MS=60,N=P.length;
+  const HW=20,MS=60,N=P.length,anc=$('dirAnc').checked;
   // Rastgele karşılaştırma: aynı sayıda noktayı aynı alana rastgele serpip en iyi şeridin puanına bak
-  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;P.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;if(anc){x0=0;x1=0;y0=0;y1=0}P.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y)});
   const ws=P.map(p=>p.w),nulls=[];
   for(let t=0;t<80;t++){
     const R=ws.map(w=>({x:x0+Math.random()*(x1-x0),y:y0+Math.random()*(y1-y0),w}));
-    const b=dirBest(R,HW,MS);nulls.push(b?b.score:0);
+    const b=dirBest(R,HW,MS,anc);nulls.push(b?b.score:0);
   }
   const lines=[];let rest=P.slice();const cols=['#5ad1ff','#b48cff','#7be08a'];
   for(let k=0;k<3;k++){
-    const b=dirBest(rest,HW,MS);if(!b)break;
+    const b=dirBest(rest,HW,MS,anc);if(!b)break;
     const pr=nulls.filter(v=>v>=b.score).length/nulls.length;
     const n=b.mem.length;
     {let sw=0,gx=0,gy=0;b.mem.forEach(m=>{sw+=m.w;gx+=m.w*m.x;gy+=m.w*m.y});gx/=sw;gy/=sw;
@@ -4344,7 +4346,7 @@ function dirCompute(){
     const set=new Set(b.mem);rest=rest.filter(p=>!set.has(p));
     if(rest.length<4)break;
   }
-  if(!lines.length){out.textContent='Şerit çıkmadı: noktalar 60 m boyunca doğrusal dizilmiyor.';return}
+  if(!lines.length){out.textContent=anc?'Artıdan geçen şerit çıkmadı. Artıyı başka yere koy ya da kutuyu kapat.':'Şerit çıkmadı: noktalar 60 m boyunca doğrusal dizilmiyor.';return}
   const nm={aday:'aday',hat:'hat',tarama:'tarama',kalıcı:'kalıcı iz',kar:'kar'};
   out.textContent=N+' nokta birleştirildi\n'+lines.map(l=>l.head+' (rastgele %'+Math.round(l.pr*100)+') · '+Object.keys(l.srcs).map(s2=>nm[s2]+' '+l.srcs[s2]).join(', ')).join('\n')+'\nŞerit yüzeydeki izlerin dizilimidir; tünel kanıtı değildir. Ev sıralarını da yakalayabilir.';
   const bd=[];dirLayer.eachLayer(l=>{if(l.getBounds)bd.push(l.getBounds())});
